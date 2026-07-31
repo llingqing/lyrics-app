@@ -16,7 +16,7 @@ export default function TimelineView({ segments, currentTime, onEdit }: Props) {
           className={`
             flex items-start gap-3 px-3 py-2 rounded-lg transition-colors cursor-pointer
             hover:bg-gray-800/50 group
-            ${currentTime && currentTime >= seg.start && currentTime <= seg.end
+            ${currentTime != null && currentTime >= seg.start && currentTime <= seg.end
               ? 'bg-blue-500/10 border border-blue-500/20'
               : ''}
           `}
