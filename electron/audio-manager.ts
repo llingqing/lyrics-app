@@ -1,12 +1,17 @@
 import { execFile } from 'child_process'
-import { statSync, existsSync, unlinkSync } from 'fs'
-import { basename, extname, join } from 'path'
+import { existsSync, unlinkSync } from 'fs'
+import { basename, extname, join, dirname } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import ffmpegPath from 'ffmpeg-static'
 import { AudioInfo } from '../src/types'
 
 const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
+
+// Derive ffprobe path from ffmpeg-static (same directory)
+const ffprobePath = ffmpegPath
+  ? join(dirname(ffmpegPath), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
+  : 'ffprobe'
 
 export function isFormatSupported(filePath: string): boolean {
   return SUPPORTED_FORMATS.has(extname(filePath).toLowerCase())
@@ -36,7 +41,7 @@ export async function loadAudioInfo(filePath: string): Promise<AudioInfo> {
 function getDuration(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const args = ['-i', filePath, '-show_entries', 'format=duration', '-v', 'quiet', '-of', 'csv=p=0']
-    execFile(ffmpegPath ?? 'ffmpeg', args, (err, stdout) => {
+    execFile(ffprobePath, args, (err, stdout) => {
       if (err) return reject(new Error(`无法读取音频信息: ${err.message}`))
       const duration = parseFloat(stdout.trim())
       if (isNaN(duration)) return reject(new Error('无法解析音频时长'))
@@ -65,6 +70,12 @@ export function convertToWav(inputPath: string, outputPath: string): Promise<voi
 export function extractWaveform(filePath: string, samples = 200): Promise<number[]> {
   return new Promise((resolve, reject) => {
     const tempWav = join(tmpdir(), `waveform-${randomUUID()}.wav`)
+    const tempRaw = join(tmpdir(), `raw-${randomUUID()}.raw`)
+
+    function cleanup() {
+      try { if (existsSync(tempWav)) unlinkSync(tempWav) } catch { /* cleanup */ }
+      try { if (existsSync(tempRaw)) unlinkSync(tempRaw) } catch { /* cleanup */ }
+    }
 
     // 先转为 16kHz mono
     convertToWav(filePath, tempWav)
@@ -76,11 +87,11 @@ export function extractWaveform(filePath: string, samples = 200): Promise<number
           '-filter:a', `aresample=8000,asetnsamples=${samples}`,
           '-f', 's16le',
           '-y',
-          join(tmpdir(), `raw-${randomUUID()}.raw`),
+          tempRaw,
         ]
         execFile(ffmpegPath ?? 'ffmpeg', args, (err) => {
           if (err) {
-            try { if (existsSync(tempWav)) unlinkSync(tempWav) } catch { /* cleanup */ }
+            cleanup()
             return reject(new Error(`波形提取失败: ${err.message}`))
           }
           // 简化：返回基于持续时间的模拟波形
@@ -93,11 +104,11 @@ export function extractWaveform(filePath: string, samples = 200): Promise<number
               // 每 0.1 秒一个采样点，使用正弦变化模拟
               waveform.push(Math.abs(Math.sin(i * 0.3) * 0.8 + Math.sin(i * 0.7) * 0.2))
             }
-            try { if (existsSync(tempWav)) unlinkSync(tempWav) } catch { /* cleanup */ }
+            cleanup()
             resolve(waveform)
           }).catch(() => {
             // 如果时长获取也失败，返回空波形
-            try { if (existsSync(tempWav)) unlinkSync(tempWav) } catch { /* cleanup */ }
+            cleanup()
             resolve(Array(samples).fill(0.1))
           })
         })
@@ -145,15 +156,22 @@ export function detectVoiceSegments(
         lastEnd = silenceEnds[i] || silenceStart
       }
 
-      // 添加最后一段（如果整段无人声，至少返回全段）
-      if (voiceSegments.length === 0) {
-        getDuration(wavPath).then(duration => {
+      // Always append tail segment after last silence and handle empty case
+      getDuration(wavPath).then(duration => {
+        if (duration - lastEnd >= 0.3) {
+          voiceSegments.push({ start: lastEnd, end: duration })
+        }
+        if (voiceSegments.length === 0) {
           voiceSegments.push({ start: 0, end: duration })
-          resolve(voiceSegments)
-        }).catch(() => resolve([{ start: 0, end: 300 }]))
-      } else {
+        }
         resolve(voiceSegments)
-      }
+      }).catch(err => {
+        if (voiceSegments.length > 0) {
+          resolve(voiceSegments)
+        } else {
+          reject(new Error(`VAD 检测失败: 无法获取音频时长 (${err.message})`))
+        }
+      })
     })
   })
 }
