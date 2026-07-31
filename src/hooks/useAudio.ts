@@ -6,11 +6,9 @@ export function useAudio() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const selectFile = useCallback(async () => {
+  const loadFile = useCallback(async (filePath: string) => {
     try {
       setError(null)
-      const filePath = await window.electronAPI.selectAudio()
-      if (!filePath) return
       setLoading(true)
       const info = await window.electronAPI.loadAudio(filePath)
       setAudioInfo(info)
@@ -21,10 +19,16 @@ export function useAudio() {
     }
   }, [])
 
+  const selectFile = useCallback(async () => {
+    const filePath = await window.electronAPI.selectAudio()
+    if (!filePath) return
+    await loadFile(filePath)
+  }, [loadFile])
+
   const clearAudio = useCallback(() => {
     setAudioInfo(null)
     setError(null)
   }, [])
 
-  return { audioInfo, loading, error, selectFile, clearAudio }
+  return { audioInfo, loading, error, selectFile, loadFile, clearAudio }
 }

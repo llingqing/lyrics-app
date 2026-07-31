@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function AudioUploader({ onLoaded }: Props) {
-  const { audioInfo, loading, error, selectFile } = useAudio()
+  const { audioInfo, loading, error, selectFile, loadFile } = useAudio()
   const [isDragging, setIsDragging] = useState(false)
 
   const handleSelect = useCallback(async () => {
@@ -39,9 +39,7 @@ export default function AudioUploader({ onLoaded }: Props) {
           setIsDragging(false)
           const file = e.dataTransfer.files[0]
           if (file) {
-            window.electronAPI.loadAudio((file as any).path)
-              .then(onLoaded)
-              .catch(() => {})
+            loadFile((file as any).path)
           }
         }}
       >
