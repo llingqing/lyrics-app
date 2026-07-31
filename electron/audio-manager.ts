@@ -1,17 +1,12 @@
 import { execFile } from 'child_process'
 import { existsSync, unlinkSync } from 'fs'
-import { basename, extname, join, dirname } from 'path'
+import { basename, extname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import ffmpegPath from 'ffmpeg-static'
 import { AudioInfo } from '../src/types'
 
 const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
-
-// Derive ffprobe path from ffmpeg-static (same directory)
-const ffprobePath = ffmpegPath
-  ? join(dirname(ffmpegPath), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe')
-  : 'ffprobe'
 
 export function isFormatSupported(filePath: string): boolean {
   return SUPPORTED_FORMATS.has(extname(filePath).toLowerCase())
@@ -41,7 +36,7 @@ export async function loadAudioInfo(filePath: string): Promise<AudioInfo> {
 function getDuration(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     const args = ['-i', filePath, '-show_entries', 'format=duration', '-v', 'quiet', '-of', 'csv=p=0']
-    execFile(ffprobePath, args, (err, stdout) => {
+    execFile(ffmpegPath ?? 'ffmpeg', args, (err, stdout) => {
       if (err) return reject(new Error(`无法读取音频信息: ${err.message}`))
       const duration = parseFloat(stdout.trim())
       if (isNaN(duration)) return reject(new Error('无法解析音频时长'))
