@@ -17,6 +17,9 @@ function createWindow() {
     },
   })
 
+  const { registerHandlers } = require('./ipc-handlers')
+  registerHandlers(mainWindow)
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
