@@ -2,13 +2,15 @@
   "name": "lyrics-app",
   "version": "0.1.0",
   "description": "从人声音频中识别歌词的桌面应用",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.node.json && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
   },
   "dependencies": {
     "ffmpeg-static": "^5.3.0",

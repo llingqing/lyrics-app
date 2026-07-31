@@ -1,0 +1,32 @@
+appId: com.lyrics-app.desktop
+productName: 歌词识别
+directories:
+  output: release
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+
+mac:
+  category: public.app-category.music
+  icon: resources/icon.icns
+  target:
+    - dmg
+    - zip
+
+win:
+  icon: resources/icon.ico
+  target:
+    - nsis
+    - portable
+
+linux:
+  icon: resources/icon.png
+  category: Audio
+  target:
+    - AppImage
+    - deb
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
