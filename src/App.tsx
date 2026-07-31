@@ -15,6 +15,7 @@ export default function App() {
   const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null)
   const [config, setConfig] = useState<InferenceConfig | null>(null)
   const [segments, setSegments] = useState<LyricSegment[]>([])
+  const [displayedResult, setDisplayedResult] = useState<TranscriptionResult | null>(null)
 
   const { progress, result, error, isRunning, start, cancel } = useInference(config)
   const { addToHistory } = useHistory()
@@ -34,6 +35,7 @@ export default function App() {
     if (result && result !== prevResult.current) {
       prevResult.current = result
       setSegments(result.segments)
+      setDisplayedResult(result)
       setStep('result')
     }
   }, [result])
@@ -55,10 +57,10 @@ export default function App() {
   }, [step])
 
   const handleSave = useCallback(async () => {
-    if (result) {
-      await addToHistory(result)
+    if (displayedResult) {
+      await addToHistory(displayedResult)
     }
-  }, [result, addToHistory])
+  }, [displayedResult, addToHistory])
 
   const handleBackToUpload = useCallback(() => {
     setStep('upload')
@@ -72,9 +74,8 @@ export default function App() {
 
   const handleHistorySelect = useCallback((historyResult: TranscriptionResult) => {
     setSegments(historyResult.segments)
+    setDisplayedResult(historyResult)
     setStep('result')
-    // 用 history 结果覆盖
-    Object.assign(historyResult, historyResult)
   }, [])
 
   return (
@@ -121,9 +122,9 @@ export default function App() {
           </div>
         )}
 
-        {step === 'result' && result && (
+        {step === 'result' && displayedResult && (
           <LyricsResult
-            result={{ ...result, segments }}
+            result={{ ...displayedResult, segments }}
             onSegmentsChange={setSegments}
             onSave={handleSave}
           />
