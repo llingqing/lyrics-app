@@ -9,24 +9,32 @@ import { randomUUID } from 'crypto'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { app } from 'electron'
 
+const originalFileNames = new Map<string, string>()
+
 export function registerHandlers(win: BrowserWindow): void {
   ipcMain.handle('audio:select', async () => {
-    const result = await dialog.showOpenDialog(win, {
-      title: '选择音频文件',
-      filters: [
-        { name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'opus'] },
-      ],
-      properties: ['openFile'],
-    })
-    return result.canceled ? null : result.filePaths[0]
+    try {
+      const result = await dialog.showOpenDialog(win, {
+        title: '选择音频文件',
+        filters: [
+          { name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a', 'opus'] },
+        ],
+        properties: ['openFile'],
+      })
+      return result.canceled ? null : result.filePaths[0]
+    } catch (e: any) {
+      throw new Error(`文件选择失败: ${e.message}`)
+    }
   })
 
   ipcMain.handle('audio:load', async (_event, filePath: string) => {
     const info = await loadAudioInfo(filePath)
+    const originalFileName = info.fileName
     // 预转为 16kHz WAV 以便后续推理
     const tempWav = join(tmpdir(), `lyrics-input-${randomUUID()}.wav`)
     await convertToWav(filePath, tempWav)
     info.filePath = tempWav // 后续推理使用转换后的 WAV
+    originalFileNames.set(tempWav, originalFileName)
     win.webContents.send('audio:info', info)
     return info
   })
@@ -42,7 +50,7 @@ export function registerHandlers(win: BrowserWindow): void {
 
       const result: TranscriptionResult = {
         id: randomUUID(),
-        audioFileName: config.filePath,
+        audioFileName: originalFileNames.get(config.filePath) || config.filePath,
         modelName: config.modelName,
         engine: config.engine,
         language,
@@ -61,11 +69,15 @@ export function registerHandlers(win: BrowserWindow): void {
   })
 
   ipcMain.handle('lyrics:save', async (_event, result: TranscriptionResult) => {
-    const historyDir = join(app.getPath('userData'), 'history')
-    if (!existsSync(historyDir)) mkdirSync(historyDir, { recursive: true })
+    try {
+      const historyDir = join(app.getPath('userData'), 'history')
+      if (!existsSync(historyDir)) mkdirSync(historyDir, { recursive: true })
 
-    const historyFile = join(historyDir, `${result.id}.json`)
-    writeFileSync(historyFile, JSON.stringify(result, null, 2), 'utf-8')
+      const historyFile = join(historyDir, `${result.id}.json`)
+      writeFileSync(historyFile, JSON.stringify(result, null, 2), 'utf-8')
+    } catch (e: any) {
+      throw new Error(`保存结果失败: ${e.message}`)
+    }
   })
 
   ipcMain.handle('export:save', async (_event, format: 'txt' | 'lrc', content: string) => {
@@ -73,24 +85,32 @@ export function registerHandlers(win: BrowserWindow): void {
   })
 
   ipcMain.handle('history:load', async () => {
-    const historyDir = join(app.getPath('userData'), 'history')
-    if (!existsSync(historyDir)) return []
+    try {
+      const historyDir = join(app.getPath('userData'), 'history')
+      if (!existsSync(historyDir)) return []
 
-    const results: TranscriptionResult[] = []
-    const files = require('fs').readdirSync(historyDir)
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        try {
-          const content = readFileSync(join(historyDir, file), 'utf-8')
-          results.push(JSON.parse(content))
-        } catch {}
+      const results: TranscriptionResult[] = []
+      const files = require('fs').readdirSync(historyDir)
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            const content = readFileSync(join(historyDir, file), 'utf-8')
+            results.push(JSON.parse(content))
+          } catch {}
+        }
       }
+      return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    } catch (e: any) {
+      throw new Error(`加载历史记录失败: ${e.message}`)
     }
-    return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   })
 
   ipcMain.handle('history:delete', async (_event, id: string) => {
-    const historyFile = join(app.getPath('userData'), 'history', `${id}.json`)
-    if (existsSync(historyFile)) unlinkSync(historyFile)
+    try {
+      const historyFile = join(app.getPath('userData'), 'history', `${id}.json`)
+      if (existsSync(historyFile)) unlinkSync(historyFile)
+    } catch (e: any) {
+      throw new Error(`删除历史记录失败: ${e.message}`)
+    }
   })
 }

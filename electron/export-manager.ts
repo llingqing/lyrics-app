@@ -1,4 +1,4 @@
-import { writeFileSync, existsSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { dialog, BrowserWindow } from 'electron'
 import { LyricSegment } from '../src/types'
 import { segmentsToLrc, segmentsToPlainText } from '../src/utils/lrc'
