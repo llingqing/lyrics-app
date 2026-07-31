@@ -45,8 +45,10 @@ export async function downloadModel(
 
   const tempPath = destPath + '.download'
   const writer = createWriteStream(tempPath)
-  writer.on('error', (err) => {
-    throw new Error(`模型写入失败: ${err.message}`)
+
+  // Convert EventEmitter error into a rejectable promise to avoid uncaught throws
+  const writeErrorPromise = new Promise<never>((_, reject) => {
+    writer.on('error', (err) => reject(new Error(`模型写入失败: ${err.message}`)))
   })
 
   const reader = response.body.getReader()
@@ -62,7 +64,7 @@ export async function downloadModel(
     }
     writer.end()
   }
-  await pump()
+  await Promise.race([pump(), writeErrorPromise])
 
   require('fs').renameSync(tempPath, destPath)
   return destPath
