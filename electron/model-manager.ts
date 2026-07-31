@@ -1,9 +1,7 @@
-import { ChildProcess, spawn, execFile } from 'child_process'
-import { join, dirname } from 'path'
+import { ChildProcess, spawn } from 'child_process'
+import { join } from 'path'
 import { app } from 'electron'
-import { existsSync, mkdirSync, createWriteStream, statSync } from 'fs'
-import { pipeline } from 'stream/promises'
-import { createReadStream } from 'fs'
+import { existsSync, mkdirSync, createWriteStream } from 'fs'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import { InferenceConfig, InferenceProgress, LyricSegment } from '../src/types'
@@ -41,13 +39,17 @@ export async function downloadModel(
 
   const response = await fetch(url)
   if (!response.ok) throw new Error(`模型下载失败: HTTP ${response.status}`)
+  if (!response.body) throw new Error('模型下载失败: 响应体为空')
   const total = parseInt(response.headers.get('content-length') || '0', 10)
   let downloaded = 0
 
   const tempPath = destPath + '.download'
   const writer = createWriteStream(tempPath)
+  writer.on('error', (err) => {
+    throw new Error(`模型写入失败: ${err.message}`)
+  })
 
-  const reader = response.body!.getReader()
+  const reader = response.body.getReader()
   const pump = async () => {
     while (true) {
       const { done, value } = await reader.read()
@@ -76,7 +78,11 @@ export async function ensureModel(modelName: string): Promise<string> {
 export function cancelInference(): void {
   cancelled = true
   if (currentProcess) {
-    currentProcess.kill('SIGTERM')
+    try {
+      currentProcess.kill('SIGTERM')
+    } catch {
+      // process may have already exited
+    }
     currentProcess = null
   }
 }
@@ -87,12 +93,13 @@ export async function runLocalInference(
 ): Promise<{ segments: LyricSegment[]; language: string }> {
   cancelled = false
   const modelPath = await ensureModel(config.modelName)
-  const tempWav = join(tmpdir(), `lyrics-${randomUUID()}.wav`)
   const outputPath = join(tmpdir(), `lyrics-${randomUUID()}`)
+  const srtPath = `${outputPath}.srt`
 
   // 先转换为 16kHz mono WAV（假设 audio-manager 已转换）
   // 这里直接使用 filePath，实际由 ipc-handlers 处理前预处理
-  const whisperPath = join(app.getAppPath(), 'resources', 'whisper')
+  const whisperBinary = process.platform === 'win32' ? 'whisper.exe' : 'whisper'
+  const whisperPath = join(app.getAppPath(), 'resources', whisperBinary)
 
   const args = [
     '-m', modelPath,
@@ -107,16 +114,14 @@ export async function runLocalInference(
     currentProcess = spawn(whisperPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
 
     let stderr = ''
-    let lastPercent = 0
 
     currentProcess.stderr?.on('data', (data: Buffer) => {
       stderr += data.toString()
       // whisper.cpp 进度输出格式如: "progress = 45%"
       const match = data.toString().match(/progress\s*=\s*(\d+)%/)
       if (match) {
-        lastPercent = parseInt(match[1], 10)
         onProgress({
-          percent: lastPercent,
+          percent: parseInt(match[1], 10),
           currentSegment: 0,
           totalSegments: 1,
           partialText: '',
@@ -127,42 +132,43 @@ export async function runLocalInference(
     currentProcess.on('close', (code) => {
       currentProcess = null
       if (cancelled) {
-        cleanup()
+        cleanup(srtPath)
         return reject(new Error('推理已被取消'))
       }
       if (code !== 0) {
         const errorMsg = extractError(stderr)
-        cleanup()
+        cleanup(srtPath)
         return reject(new Error(errorMsg))
       }
 
-      const srtPath = `${outputPath}.srt`
       if (!existsSync(srtPath)) {
-        cleanup()
+        cleanup(srtPath)
         return reject(new Error('推理完成但未生成输出'))
       }
 
       try {
         const srtContent = require('fs').readFileSync(srtPath, 'utf-8')
         const { segments, language } = parseSrt(srtContent, config)
-        cleanup()
+        cleanup(srtPath)
         resolve({ segments, language })
       } catch (e) {
-        cleanup()
+        cleanup(srtPath)
         reject(e)
       }
     })
 
     currentProcess.on('error', (err) => {
       currentProcess = null
-      cleanup()
+      cleanup(srtPath)
       reject(new Error(`whisper.cpp 进程启动失败: ${err.message}。请确认已下载 whisper 可执行文件到 resources/ 目录。`))
     })
   })
 }
 
-function cleanup() {
-  // 临时文件在进程结束时由 OS 管理，此处不需要显式清理
+function cleanup(srtPath?: string) {
+  if (srtPath) {
+    try { require('fs').unlinkSync(srtPath) } catch { /* already cleaned up */ }
+  }
 }
 
 function extractError(stderr: string): string {
@@ -197,6 +203,10 @@ export async function runCloudInference(
   const maxRetries = 3
 
   while (retries <= maxRetries) {
+    if (cancelled) {
+      throw new Error('推理已被取消')
+    }
+
     try {
       onProgress({ percent: 0, currentSegment: 0, totalSegments: 1, partialText: '' })
 
@@ -236,8 +246,10 @@ export async function runCloudInference(
 
       return { segments, language: data.language || config.language }
     } catch (e: any) {
-      if (retries > maxRetries) throw e
+      if (e?.message?.includes('API Key 无效')) throw e
+      if (retries >= maxRetries) throw e
       retries++
+      await sleep(1000 * retries)
     }
   }
 
