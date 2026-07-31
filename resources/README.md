@@ -1,7 +1,20 @@
-# whisper.cpp Binary
+# whisper.cpp Binary & Libraries
 
-Download the appropriate binary from https://github.com/ggerganov/whisper.cpp/releases
+Download from https://github.com/ggml-org/whisper.cpp/releases/latest
 
-Place it here as:
-- Linux/macOS: `whisper`
-- Windows: `whisper.exe`
+## Linux x64
+
+```bash
+# Download
+curl -sL -o whisper.tar.gz \
+  https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.1/whisper-bin-ubuntu-x64.tar.gz
+
+# Extract and copy
+tar xzf whisper.tar.gz
+cp whisper-bin-ubuntu-x64/whisper-cli resources/whisper
+cp whisper-bin-ubuntu-x64/lib*.so* resources/
+```
+
+## macOS / Windows
+
+See the releases page for your platform's build.

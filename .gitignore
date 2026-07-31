@@ -8,3 +8,8 @@ playwright-report/
 .env
 *.log
 .DS_Store
+
+# whisper.cpp binaries (download from releases)
+resources/whisper
+resources/*.so
+resources/*.so.*

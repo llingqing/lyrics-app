@@ -6,6 +6,10 @@ import { randomUUID } from 'crypto'
 import ffmpegPath from 'ffmpeg-static'
 import { AudioInfo } from '../src/types'
 
+// ffmpeg-static may resolve to a path even when the binary was never downloaded;
+// fall back to system ffmpeg when the static binary doesn't exist on disk.
+const ffmpeg = ffmpegPath && existsSync(ffmpegPath) ? ffmpegPath : 'ffmpeg'
+
 const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
 
 export function isFormatSupported(filePath: string): boolean {
@@ -35,11 +39,17 @@ export async function loadAudioInfo(filePath: string): Promise<AudioInfo> {
 
 function getDuration(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    const args = ['-i', filePath, '-show_entries', 'format=duration', '-v', 'quiet', '-of', 'csv=p=0']
-    execFile(ffmpegPath ?? 'ffmpeg', args, (err, stdout) => {
-      if (err) return reject(new Error(`无法读取音频信息: ${err.message}`))
-      const duration = parseFloat(stdout.trim())
-      if (isNaN(duration)) return reject(new Error('无法解析音频时长'))
+    // ffmpeg (unlike ffprobe) doesn't support -show_entries / -of csv;
+    // parse the Duration line from stderr instead.
+    execFile(ffmpeg, ['-i', filePath], (err, _stdout, stderr) => {
+      // ffmpeg exits with code 1 when no output file is specified, which is expected.
+      // Only treat it as an error if stderr is empty.
+      if (err && !stderr) {
+        return reject(new Error(`无法读取音频信息: ${err.message}`))
+      }
+      const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+\.\d+)/)
+      if (!match) return reject(new Error('无法解析音频时长'))
+      const duration = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3])
       resolve(duration)
     })
   })
@@ -55,7 +65,7 @@ export function convertToWav(inputPath: string, outputPath: string): Promise<voi
       '-y',
       outputPath,
     ]
-    execFile(ffmpegPath ?? 'ffmpeg', args, (err) => {
+    execFile(ffmpeg, args, (err) => {
       if (err) return reject(new Error(`音频转换失败: ${err.message}`))
       resolve()
     })
@@ -84,7 +94,7 @@ export function extractWaveform(filePath: string, samples = 200): Promise<number
           '-y',
           tempRaw,
         ]
-        execFile(ffmpegPath ?? 'ffmpeg', args, (err) => {
+        execFile(ffmpeg, args, (err) => {
           if (err) {
             cleanup()
             return reject(new Error(`波形提取失败: ${err.message}`))
@@ -124,7 +134,7 @@ export function detectVoiceSegments(
       '-f', 'null',
       '-',
     ]
-    execFile(ffmpegPath ?? 'ffmpeg', args, (err, _stdout, stderr) => {
+    execFile(ffmpeg, args, (err, _stdout, stderr) => {
       if (err && !stderr) {
         return reject(new Error(`VAD 检测失败: ${err.message}`))
       }

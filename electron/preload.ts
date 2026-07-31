@@ -27,4 +27,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('inference:error', handler)
     return () => ipcRenderer.removeListener('inference:error', handler)
   },
+
+  listModels: () => ipcRenderer.invoke('model:list'),
+  downloadModel: (modelName: string) => ipcRenderer.invoke('model:download', modelName),
+  onModelDownloadProgress: (callback: (p: { modelName: string; percent: number }) => void) => {
+    const handler = (_event: any, p: any) => callback(p)
+    ipcRenderer.on('model:download-progress', handler)
+    return () => ipcRenderer.removeListener('model:download-progress', handler)
+  },
 })

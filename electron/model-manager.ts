@@ -23,7 +23,7 @@ function getModelsDir(): string {
   return dir
 }
 
-function getModelPath(modelName: string): string {
+export function getModelPath(modelName: string): string {
   return join(getModelsDir(), `ggml-${modelName}.bin`)
 }
 
@@ -102,6 +102,7 @@ export async function runLocalInference(
   // 这里直接使用 filePath，实际由 ipc-handlers 处理前预处理
   const whisperBinary = process.platform === 'win32' ? 'whisper.exe' : 'whisper'
   const whisperPath = join(app.getAppPath(), 'resources', whisperBinary)
+  const resourcesDir = join(app.getAppPath(), 'resources')
 
   const args = [
     '-m', modelPath,
@@ -110,10 +111,11 @@ export async function runLocalInference(
     '-of', outputPath,
     '-l', config.language === 'auto' ? 'auto' : config.language,
     '--print-progress',
+    '-ng',  // disable GPU — pre-built binary may lack CUDA backend
   ]
 
   return new Promise((resolve, reject) => {
-    currentProcess = spawn(whisperPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    currentProcess = spawn(whisperPath, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, LD_LIBRARY_PATH: resourcesDir } })
 
     let stderr = ''
 

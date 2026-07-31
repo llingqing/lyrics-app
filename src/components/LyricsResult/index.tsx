@@ -1,18 +1,23 @@
-import { useState, useCallback } from 'react'
-import { TranscriptionResult, LyricSegment } from '../../types'
+import { useState, useCallback, useRef } from 'react'
+import { TranscriptionResult, LyricSegment, AudioInfo } from '../../types'
 import TimelineView from './TimelineView'
 import LyricsEditor from './LyricsEditor'
 import ExportPanel from './ExportPanel'
+import AudioPlayer, { AudioPlayerHandle } from '../AudioPlayer'
 
 interface Props {
   result: TranscriptionResult
+  audioInfo: AudioInfo | null
   onSegmentsChange: (segments: LyricSegment[]) => void
   onSave: () => void
 }
 
-export default function LyricsResult({ result, onSegmentsChange, onSave }: Props) {
+export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSave }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [segments, setSegments] = useState<LyricSegment[]>(result.segments)
+  const [currentTime, setCurrentTime] = useState<number | undefined>(undefined)
+  const playerRef = useRef<AudioPlayerHandle>(null)
+  const audioPath = audioInfo?.originalPath || audioInfo?.filePath || ''
 
   const handleEdit = useCallback((id: string) => {
     setEditingId(id)
@@ -29,6 +34,10 @@ export default function LyricsResult({ result, onSegmentsChange, onSave }: Props
 
   const handleCancelEdit = useCallback(() => {
     setEditingId(null)
+  }, [])
+
+  const handleSeek = useCallback((time: number) => {
+    playerRef.current?.seekTo(time)
   }, [])
 
   const editingSegment = editingId ? segments.find(s => s.id === editingId) : null
@@ -51,13 +60,29 @@ export default function LyricsResult({ result, onSegmentsChange, onSave }: Props
         </button>
       </div>
 
+      {/* 音频播放器 */}
+      {audioPath && (
+        <AudioPlayer
+          ref={playerRef}
+          audioPath={audioPath}
+          duration={audioInfo?.duration || result.segments[result.segments.length - 1]?.end || 0}
+          waveform={audioInfo?.waveform}
+          onTimeUpdate={setCurrentTime}
+        />
+      )}
+
       {/* 时间轴歌词 */}
       <div className="border border-gray-700 rounded-xl overflow-hidden">
         <div className="px-4 py-2 border-b border-gray-700 bg-gray-800/50">
           <span className="text-xs text-gray-400 font-medium">时间轴</span>
         </div>
         <div className="p-2 max-h-96 overflow-y-auto">
-          <TimelineView segments={segments} onEdit={handleEdit} />
+          <TimelineView
+            segments={segments}
+            currentTime={currentTime}
+            onEdit={handleEdit}
+            onSeek={handleSeek}
+          />
         </div>
       </div>
 

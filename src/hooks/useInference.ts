@@ -44,5 +44,12 @@ export function useInference(config: InferenceConfig | null) {
     setIsRunning(false)
   }, [])
 
-  return { progress, result, error, isRunning, start, cancel }
+  const reset = useCallback(() => {
+    setProgress(null)
+    setResult(null)
+    setError(null)
+    setIsRunning(false)
+  }, [])
+
+  return { progress, result, error, isRunning, start, cancel, reset }
 }

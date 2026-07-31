@@ -4,6 +4,7 @@ import ConfigPanel from './components/ConfigPanel'
 import InferenceProgress from './components/InferenceProgress'
 import LyricsResult from './components/LyricsResult'
 import HistoryPanel from './components/HistoryPanel'
+import ModelManager from './components/ModelManager'
 import { useInference } from './hooks/useInference'
 import { useHistory } from './hooks/useHistory'
 import { AudioInfo, InferenceConfig, TranscriptionResult, LyricSegment } from './types'
@@ -17,7 +18,7 @@ export default function App() {
   const [segments, setSegments] = useState<LyricSegment[]>([])
   const [displayedResult, setDisplayedResult] = useState<TranscriptionResult | null>(null)
 
-  const { progress, result, error, isRunning, start, cancel } = useInference(config)
+  const { progress, result, error, isRunning, start, cancel, reset } = useInference(config)
   const { addToHistory } = useHistory()
 
   const handleAudioLoaded = useCallback((info: AudioInfo) => {
@@ -58,15 +59,18 @@ export default function App() {
 
   const handleSave = useCallback(async () => {
     if (displayedResult) {
-      await addToHistory(displayedResult)
+      await addToHistory({ ...displayedResult, segments })
     }
-  }, [displayedResult, addToHistory])
+  }, [displayedResult, segments, addToHistory])
 
   const handleBackToUpload = useCallback(() => {
     setStep('upload')
     setAudioInfo(null)
     setConfig(null)
-  }, [])
+    setSegments([])
+    setDisplayedResult(null)
+    reset()
+  }, [reset])
 
   const handleBackToConfig = useCallback(() => {
     setStep('config')
@@ -94,7 +98,10 @@ export default function App() {
 
       <main className="flex-1 py-8">
         {step === 'upload' && (
-          <AudioUploader onLoaded={handleAudioLoaded} />
+          <>
+            <AudioUploader onLoaded={handleAudioLoaded} />
+            <ModelManager />
+          </>
         )}
 
         {step === 'config' && audioInfo && (
@@ -125,6 +132,7 @@ export default function App() {
         {step === 'result' && displayedResult && (
           <LyricsResult
             result={{ ...displayedResult, segments }}
+            audioInfo={audioInfo}
             onSegmentsChange={setSegments}
             onSave={handleSave}
           />

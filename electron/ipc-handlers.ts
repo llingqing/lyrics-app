@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { loadAudioInfo, convertToWav } from './audio-manager'
-import { runLocalInference, runCloudInference, cancelInference } from './model-manager'
+import { runLocalInference, runCloudInference, cancelInference, downloadModel, getModelPath } from './model-manager'
 import { showExportDialog } from './export-manager'
 import { InferenceConfig, TranscriptionResult } from '../src/types'
 import { join } from 'path'
@@ -30,6 +30,7 @@ export function registerHandlers(win: BrowserWindow): void {
   ipcMain.handle('audio:load', async (_event, filePath: string) => {
     const info = await loadAudioInfo(filePath)
     const originalFileName = info.fileName
+    info.originalPath = filePath // 保留原始路径用于播放
     // 预转为 16kHz WAV 以便后续推理
     const tempWav = join(tmpdir(), `lyrics-input-${randomUUID()}.wav`)
     await convertToWav(filePath, tempWav)
@@ -111,6 +112,27 @@ export function registerHandlers(win: BrowserWindow): void {
       if (existsSync(historyFile)) unlinkSync(historyFile)
     } catch (e: any) {
       throw new Error(`删除历史记录失败: ${e.message}`)
+    }
+  })
+
+  // 模型管理
+  const MODEL_NAMES = ['tiny', 'base', 'small', 'medium'] as const
+
+  ipcMain.handle('model:list', async () => {
+    const result: Record<string, boolean> = {}
+    for (const name of MODEL_NAMES) {
+      result[name] = existsSync(getModelPath(name))
+    }
+    return result
+  })
+
+  ipcMain.handle('model:download', async (_event, modelName: string) => {
+    try {
+      return await downloadModel(modelName, (p) => {
+        win.webContents.send('model:download-progress', { modelName, percent: p.percent })
+      })
+    } catch (e: any) {
+      throw new Error(`模型下载失败: ${e.message}`)
     }
   })
 }

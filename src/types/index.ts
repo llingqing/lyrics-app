@@ -5,6 +5,7 @@ export interface AudioInfo {
   sampleRate: number
   format: string
   waveform?: number[]   // 归一化振幅数组 [-1, 1]，长度约 200
+  originalPath?: string // 原始文件路径（用于播放，filePath 会被替换为 WAV）
 }
 
 export interface LyricSegment {
@@ -66,6 +67,9 @@ export interface ElectronAPI {
   onInferenceProgress: (callback: (progress: InferenceProgress) => void) => () => void
   onInferenceResult: (callback: (result: TranscriptionResult) => void) => () => void
   onInferenceError: (callback: (error: { message: string; code: string }) => void) => () => void
+  listModels: () => Promise<Record<string, boolean>>
+  downloadModel: (modelName: string) => Promise<string>
+  onModelDownloadProgress: (callback: (p: { modelName: string; percent: number }) => void) => () => void
 }
 
 declare global {
