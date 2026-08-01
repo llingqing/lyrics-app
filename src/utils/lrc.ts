@@ -1,11 +1,18 @@
 import { LyricSegment } from '../types'
-import { formatTime } from './format'
+
+function formatLrcTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  // LRC uses centiseconds (2 digits): hh:mm:ss → [mm:ss.cs]
+  const cs = Math.round((seconds * 100) % 100)
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
+}
 
 export function segmentsToLrc(segments: LyricSegment[]): string {
   const lines: string[] = []
   for (const seg of segments) {
     if (seg.text.trim()) {
-      lines.push(`[${formatTime(seg.start)}]${seg.text}`)
+      lines.push(`[${formatLrcTime(seg.start)}]${seg.text}`)
     }
   }
   return lines.join('\n')

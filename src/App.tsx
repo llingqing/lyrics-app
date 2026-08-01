@@ -5,6 +5,7 @@ import InferenceProgress from './components/InferenceProgress'
 import LyricsResult from './components/LyricsResult'
 import HistoryPanel from './components/HistoryPanel'
 import ModelManager from './components/ModelManager'
+import ErrorBoundary from './components/ErrorBoundary'
 import { useInference } from './hooks/useInference'
 import { useHistory } from './hooks/useHistory'
 import { AudioInfo, InferenceConfig, TranscriptionResult, LyricSegment } from './types'
@@ -98,44 +99,50 @@ export default function App() {
 
       <main className="flex-1 py-8">
         {step === 'upload' && (
-          <>
+          <ErrorBoundary>
             <AudioUploader onLoaded={handleAudioLoaded} />
             <ModelManager />
-          </>
+          </ErrorBoundary>
         )}
 
         {step === 'config' && audioInfo && (
-          <ConfigPanel
-            audioInfo={audioInfo}
-            onStart={handleStartInference}
-            onBack={handleBackToUpload}
-          />
+          <ErrorBoundary>
+            <ConfigPanel
+              audioInfo={audioInfo}
+              onStart={handleStartInference}
+              onBack={handleBackToUpload}
+            />
+          </ErrorBoundary>
         )}
 
         {step === 'inference' && (
-          <div className="flex flex-col items-center gap-4 pt-12">
-            <InferenceProgress progress={progress} onCancel={cancel} />
-            {error && !result && (
-              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 max-w-md">
-                <p className="text-red-400 text-sm">{error}</p>
-                <button
-                  onClick={handleBackToConfig}
-                  className="mt-2 text-sm text-red-400 underline"
-                >
-                  返回重新配置
-                </button>
-              </div>
-            )}
-          </div>
+          <ErrorBoundary>
+            <div className="flex flex-col items-center gap-4 pt-12">
+              <InferenceProgress progress={progress} onCancel={cancel} />
+              {error && !result && (
+                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 max-w-md">
+                  <p className="text-red-400 text-sm">{error}</p>
+                  <button
+                    onClick={handleBackToConfig}
+                    className="mt-2 text-sm text-red-400 underline"
+                  >
+                    返回重新配置
+                  </button>
+                </div>
+              )}
+            </div>
+          </ErrorBoundary>
         )}
 
         {step === 'result' && displayedResult && (
-          <LyricsResult
-            result={{ ...displayedResult, segments }}
-            audioInfo={audioInfo}
-            onSegmentsChange={setSegments}
-            onSave={handleSave}
-          />
+          <ErrorBoundary>
+            <LyricsResult
+              result={{ ...displayedResult, segments }}
+              audioInfo={audioInfo}
+              onSegmentsChange={setSegments}
+              onSave={handleSave}
+            />
+          </ErrorBoundary>
         )}
       </main>
 

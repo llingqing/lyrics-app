@@ -94,15 +94,23 @@ export async function runLocalInference(
   onProgress: (p: InferenceProgress) => void,
 ): Promise<{ segments: LyricSegment[]; language: string }> {
   cancelled = false
+
+  // 检查文件是否存在
+  if (!existsSync(config.filePath)) {
+    throw new Error(`音频文件不存在: ${config.filePath}`)
+  }
+
   const modelPath = await ensureModel(config.modelName)
   const outputPath = join(tmpdir(), `lyrics-${randomUUID()}`)
   const srtPath = `${outputPath}.srt`
 
-  // 先转换为 16kHz mono WAV（假设 audio-manager 已转换）
-  // 这里直接使用 filePath，实际由 ipc-handlers 处理前预处理
+  // 检查 whisper 二进制是否存在
   const whisperBinary = process.platform === 'win32' ? 'whisper.exe' : 'whisper'
   const resourcesDir = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
   const whisperPath = join(resourcesDir, whisperBinary)
+  if (!existsSync(whisperPath)) {
+    throw new Error(`whisper 程序未找到: ${whisperPath}。请将 whisper 可执行文件放到 resources/ 目录。`)
+  }
 
   const args = [
     '-m', modelPath,

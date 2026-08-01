@@ -59,6 +59,9 @@ function getDuration(filePath: string): Promise<number> {
 }
 
 export function convertToWav(inputPath: string, outputPath: string): Promise<void> {
+  if (!existsSync(inputPath)) {
+    return Promise.reject(new Error(`音频文件不存在: ${inputPath}`))
+  }
   return new Promise((resolve, reject) => {
     const args = [
       '-i', inputPath,
@@ -76,6 +79,9 @@ export function convertToWav(inputPath: string, outputPath: string): Promise<voi
 }
 
 export function extractWaveform(filePath: string, samples = 200): Promise<number[]> {
+  if (!existsSync(filePath)) {
+    return Promise.reject(new Error(`音频文件不存在: ${filePath}`))
+  }
   return new Promise((resolve, reject) => {
     const tempWav = join(tmpdir(), `waveform-${randomUUID()}.wav`)
     const tempRaw = join(tmpdir(), `raw-${randomUUID()}.raw`)

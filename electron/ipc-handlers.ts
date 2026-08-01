@@ -61,7 +61,12 @@ export function registerHandlers(win: BrowserWindow): void {
 
       win.webContents.send('inference:result', result)
     } catch (e: any) {
-      win.webContents.send('inference:error', { message: e.message, code: 'INFERENCE_FAILED' })
+      const msg = e?.message || '未知错误'
+      const code = msg.includes('不存在') ? 'FILE_NOT_FOUND'
+        : msg.includes('下载') ? 'MODEL_DOWNLOAD_FAILED'
+        : msg.includes('取消') ? 'CANCELLED'
+        : 'INFERENCE_FAILED'
+      win.webContents.send('inference:error', { message: msg, code })
     }
   })
 
