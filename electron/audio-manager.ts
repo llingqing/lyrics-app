@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { existsSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, unlinkSync } from 'fs'
 import { basename, extname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -85,14 +85,14 @@ export function extractWaveform(filePath: string, samples = 200): Promise<number
       try { if (existsSync(tempRaw)) unlinkSync(tempRaw) } catch { /* cleanup */ }
     }
 
-    // 先转为 16kHz mono
+    // 先转为 16kHz mono WAV
     convertToWav(filePath, tempWav)
       .then(() => {
-        // 读取 WAV 的 PCM 数据，采样提取振幅
+        // 输出 8kHz s16le raw PCM（降低总量，足够波形显示）
         const args = [
           '-i', tempWav,
           '-ac', '1',
-          '-filter:a', `aresample=8000,asetnsamples=${samples}`,
+          '-ar', '8000',
           '-f', 's16le',
           '-y',
           tempRaw,
@@ -102,23 +102,41 @@ export function extractWaveform(filePath: string, samples = 200): Promise<number
             cleanup()
             return reject(new Error(`波形提取失败: ${err.message}`))
           }
-          // 简化：返回基于持续时间的模拟波形
-          getDuration(filePath).then(duration => {
-            // 使用 ffmpeg silencedetect 可以获取更精确的波形
-            // 这里返回基本波形数据
-            const waveform: number[] = []
-            const segs = Math.min(samples, Math.floor(duration * 10))
-            for (let i = 0; i < segs; i++) {
-              // 每 0.1 秒一个采样点，使用正弦变化模拟
-              waveform.push(Math.abs(Math.sin(i * 0.3) * 0.8 + Math.sin(i * 0.7) * 0.2))
+          try {
+            const pcm = readFileSync(tempRaw)
+            const totalSamples = Math.floor(pcm.length / 2)
+            if (totalSamples === 0) {
+              cleanup()
+              return resolve(Array(samples).fill(0.1))
             }
+
+            // 将 PCM 按 samples 个桶分组，每桶取 RMS 后归一化
+            const bucketSize = Math.ceil(totalSamples / samples)
+            const waveform: number[] = []
+
+            for (let b = 0; b < samples; b++) {
+              const start = b * bucketSize
+              const end = Math.min(start + bucketSize, totalSamples)
+              let sumSq = 0
+              let count = 0
+              for (let i = start; i < end; i++) {
+                const offset = i * 2
+                // s16le: little-endian signed 16-bit
+                const val = pcm.readInt16LE(offset)
+                sumSq += val * val
+                count++
+              }
+              const rms = count > 0 ? Math.sqrt(sumSq / count) : 0
+              waveform.push(rms / 32768) // normalize to [0, 1]
+            }
+
             cleanup()
             resolve(waveform)
-          }).catch(() => {
-            // 如果时长获取也失败，返回空波形
+          } catch (e: any) {
             cleanup()
+            // fallback: empty flat waveform
             resolve(Array(samples).fill(0.1))
-          })
+          }
         })
       })
       .catch(reject)

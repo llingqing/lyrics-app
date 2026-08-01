@@ -81,7 +81,7 @@ export function registerHandlers(win: BrowserWindow): void {
     }
   })
 
-  ipcMain.handle('export:save', async (_event, format: 'txt' | 'lrc', content: string) => {
+  ipcMain.handle('export:save', async (_event, format: 'txt' | 'lrc' | 'srt', content: string) => {
     return showExportDialog(win, format, content)
   })
 

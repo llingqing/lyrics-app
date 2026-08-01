@@ -1,16 +1,24 @@
 import { useState, useCallback } from 'react'
 import { LyricSegment } from '../../types'
-import { segmentsToLrc, segmentsToPlainText } from '../../utils/lrc'
+import { segmentsToLrc, segmentsToPlainText, segmentsToSrt } from '../../utils/lrc'
 
 interface Props {
   segments: LyricSegment[]
 }
 
+const FORMATS = [
+  { key: 'lrc' as const, label: 'LRC 歌词' },
+  { key: 'srt' as const, label: 'SRT' },
+  { key: 'txt' as const, label: '纯文本' },
+]
+
 export default function ExportPanel({ segments }: Props) {
-  const [previewFormat, setPreviewFormat] = useState<'txt' | 'lrc'>('lrc')
+  const [previewFormat, setPreviewFormat] = useState<'lrc' | 'srt' | 'txt'>('lrc')
   const [copied, setCopied] = useState(false)
 
-  const content = previewFormat === 'lrc' ? segmentsToLrc(segments) : segmentsToPlainText(segments)
+  const content = previewFormat === 'lrc' ? segmentsToLrc(segments)
+    : previewFormat === 'srt' ? segmentsToSrt(segments)
+    : segmentsToPlainText(segments)
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content)
@@ -28,17 +36,17 @@ export default function ExportPanel({ segments }: Props) {
       <div className="flex items-center gap-4">
         <span className="text-sm text-gray-400">预览格式:</span>
         <div className="flex gap-1">
-          {(['lrc', 'txt'] as const).map(f => (
+          {FORMATS.map(f => (
             <button
-              key={f}
+              key={f.key}
               className={`py-1 px-3 rounded text-sm transition-colors ${
-                previewFormat === f
+                previewFormat === f.key
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
               }`}
-              onClick={() => setPreviewFormat(f)}
+              onClick={() => setPreviewFormat(f.key)}
             >
-              {f === 'lrc' ? 'LRC 歌词' : '纯文本'}
+              {f.label}
             </button>
           ))}
         </div>

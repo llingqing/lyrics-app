@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { TranscriptionResult, LyricSegment, AudioInfo } from '../../types'
 import TimelineView from './TimelineView'
 import LyricsEditor from './LyricsEditor'
@@ -19,11 +19,69 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
   const playerRef = useRef<AudioPlayerHandle>(null)
   const audioPath = audioInfo?.originalPath || audioInfo?.filePath || ''
 
+  // Undo / Redo
+  const undoStack = useRef<LyricSegment[][]>([])
+  const redoStack = useRef<LyricSegment[][]>([])
+  const [, setUndoTick] = useState(0) // force re-render when stacks change
+
+  function pushUndo(snapshot: LyricSegment[]) {
+    undoStack.current.push(snapshot)
+    redoStack.current = [] // clear redo on new action
+    setUndoTick(n => n + 1)
+  }
+
+  const undo = useCallback(() => {
+    if (undoStack.current.length === 0) return
+    const prev = undoStack.current.pop()!
+    redoStack.current.push(segments)
+    setSegments(prev)
+    onSegmentsChange(prev)
+    setUndoTick(n => n + 1)
+  }, [segments, onSegmentsChange])
+
+  const redo = useCallback(() => {
+    if (redoStack.current.length === 0) return
+    const next = redoStack.current.pop()!
+    undoStack.current.push(segments)
+    setSegments(next)
+    onSegmentsChange(next)
+    setUndoTick(n => n + 1)
+  }, [segments, onSegmentsChange])
+
+  // Ctrl+Z / Ctrl+Shift+Z
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      } else if (e.ctrlKey && e.key === 'Z') {
+        // Ctrl+Shift+Z (firefox/chrome sends capital Z for shift)
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [undo, redo])
+
+  // Reorder handler
+  const handleReorder = useCallback((fromIndex: number, toIndex: number) => {
+    pushUndo([...segments])
+    const updated = [...segments]
+    const [moved] = updated.splice(fromIndex, 1)
+    updated.splice(toIndex, 0, moved)
+    // Reassign IDs to keep them in visual order
+    updated.forEach((s, i) => { s.id = `seg-${i}` })
+    setSegments(updated)
+    onSegmentsChange(updated)
+  }, [segments, onSegmentsChange])
+
   const handleEdit = useCallback((id: string) => {
     setEditingId(id)
   }, [])
 
   const handleSaveEdit = useCallback((id: string, text: string) => {
+    pushUndo([...segments])
     const updated = segments.map(s =>
       s.id === id ? { ...s, text, edited: true } : s
     )
@@ -41,6 +99,8 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
   }, [])
 
   const editingSegment = editingId ? segments.find(s => s.id === editingId) : null
+  const canUndo = undoStack.current.length > 0
+  const canRedo = redoStack.current.length > 0
 
   return (
     <div className="flex flex-col gap-6 p-8 max-w-2xl mx-auto">
@@ -52,12 +112,30 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
             {result.audioFileName} · {result.language.toUpperCase()} · {result.modelName}
           </p>
         </div>
-        <button
-          onClick={onSave}
-          className="py-2 px-4 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors text-sm"
-        >
-          保存到历史
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className="py-2 px-3 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+            title="撤销 (Ctrl+Z)"
+          >
+            ↩
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            className="py-2 px-3 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+            title="重做 (Ctrl+Shift+Z)"
+          >
+            ↪
+          </button>
+          <button
+            onClick={onSave}
+            className="py-2 px-4 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors text-sm"
+          >
+            保存到历史
+          </button>
+        </div>
       </div>
 
       {/* 音频播放器 */}
@@ -82,6 +160,7 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
             currentTime={currentTime}
             onEdit={handleEdit}
             onSeek={handleSeek}
+            onReorder={handleReorder}
           />
         </div>
       </div>

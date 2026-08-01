@@ -61,7 +61,7 @@ export interface ElectronAPI {
   startInference: (config: InferenceConfig) => Promise<void>
   cancelInference: () => Promise<void>
   saveResult: (result: TranscriptionResult) => Promise<void>
-  exportFile: (format: 'txt' | 'lrc', content: string) => Promise<string | null>
+  exportFile: (format: 'txt' | 'lrc' | 'srt', content: string) => Promise<string | null>
   loadHistory: () => Promise<TranscriptionResult[]>
   deleteHistory: (id: string) => Promise<void>
   onInferenceProgress: (callback: (progress: InferenceProgress) => void) => () => void
