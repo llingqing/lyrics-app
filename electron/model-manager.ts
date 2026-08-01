@@ -101,8 +101,8 @@ export async function runLocalInference(
   // 先转换为 16kHz mono WAV（假设 audio-manager 已转换）
   // 这里直接使用 filePath，实际由 ipc-handlers 处理前预处理
   const whisperBinary = process.platform === 'win32' ? 'whisper.exe' : 'whisper'
-  const whisperPath = join(app.getAppPath(), 'resources', whisperBinary)
-  const resourcesDir = join(app.getAppPath(), 'resources')
+  const resourcesDir = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
+  const whisperPath = join(resourcesDir, whisperBinary)
 
   const args = [
     '-m', modelPath,

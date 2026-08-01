@@ -4,11 +4,14 @@ import { basename, extname, join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import ffmpegPath from 'ffmpeg-static'
+import { app } from 'electron'
 import { AudioInfo } from '../src/types'
 
-// ffmpeg-static may resolve to a path even when the binary was never downloaded;
-// fall back to system ffmpeg when the static binary doesn't exist on disk.
-const ffmpeg = ffmpegPath && existsSync(ffmpegPath) ? ffmpegPath : 'ffmpeg'
+// 优先级：打包内置 > ffmpeg-static > 系统 ffmpeg
+const resourcesDir = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
+const bundledFfmpeg = join(resourcesDir, 'ffmpeg')
+const ffmpeg = existsSync(bundledFfmpeg) ? bundledFfmpeg
+  : (ffmpegPath && existsSync(ffmpegPath) ? ffmpegPath : 'ffmpeg')
 
 const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
 

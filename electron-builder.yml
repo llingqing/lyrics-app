@@ -6,7 +6,16 @@ directories:
 files:
   - dist/**/*
   - dist-electron/**/*
-  - resources/**/*
+
+# Binary files placed outside ASAR (executable, needs file system access)
+extraResources:
+  - from: resources/
+    to: .
+    filter:
+      - "**/*"
+      - "!README.md"
+  - from: node_modules/ffmpeg-static/ffmpeg
+    to: ffmpeg
 
 mac:
   category: public.app-category.music
