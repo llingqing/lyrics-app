@@ -1,11 +1,20 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
 
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
 
   selectAudio: () => ipcRenderer.invoke('audio:select'),
-  loadAudio: (filePath: string) => ipcRenderer.invoke('audio:load', filePath),
-  startInference: (config: any) => ipcRenderer.invoke('inference:start', config),
+  loadAudio: (filePath: string) => {
+    const err = validateFilePath(filePath)
+    if (err) return Promise.reject(new Error(err))
+    return ipcRenderer.invoke('audio:load', filePath)
+  },
+  startInference: (config: any) => {
+    const err = validateInferenceConfig(config)
+    if (err) return Promise.reject(new Error(err))
+    return ipcRenderer.invoke('inference:start', config)
+  },
   cancelInference: () => ipcRenderer.invoke('inference:cancel'),
   retryInference: () => ipcRenderer.invoke('inference:retry'),
   saveResult: (result: any) => ipcRenderer.invoke('lyrics:save', result),
