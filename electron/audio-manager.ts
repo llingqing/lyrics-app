@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 import ffmpegPath from 'ffmpeg-static'
 import { app } from 'electron'
 import { AudioInfo } from '../src/types'
+import { isFormatSupported } from '../src/utils/format'
 
 // 优先级：打包内置 > ffmpeg-static > 系统 ffmpeg
 const resourcesDir = app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources')
@@ -13,11 +14,7 @@ const bundledFfmpeg = join(resourcesDir, 'ffmpeg')
 const ffmpeg = existsSync(bundledFfmpeg) ? bundledFfmpeg
   : (ffmpegPath && existsSync(ffmpegPath) ? ffmpegPath : 'ffmpeg')
 
-const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
-
-export function isFormatSupported(filePath: string): boolean {
-  return SUPPORTED_FORMATS.has(extname(filePath).toLowerCase())
-}
+export { isFormatSupported }
 
 export async function loadAudioInfo(filePath: string): Promise<AudioInfo> {
   if (!existsSync(filePath)) {

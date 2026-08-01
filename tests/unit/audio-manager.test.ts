@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isFormatSupported } from '../../electron/audio-manager'
+import { isFormatSupported } from '../../src/utils/format'
 
 describe('isFormatSupported', () => {
   it('accepts mp3 files', () => {

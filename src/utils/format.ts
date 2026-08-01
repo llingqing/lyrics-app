@@ -1,3 +1,5 @@
+import { extname } from 'path'
+
 export function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
@@ -17,4 +19,10 @@ export function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
+
+export function isFormatSupported(filePath: string): boolean {
+  return SUPPORTED_FORMATS.has(extname(filePath).toLowerCase())
 }
