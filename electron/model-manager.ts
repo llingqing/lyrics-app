@@ -211,6 +211,10 @@ export async function runCloudInference(
     formData.append('language', config.language)
   }
 
+  // Phase 1: preparing to upload — brief tick so UI shows stage text
+  onProgress({ percent: 0, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
+  await sleep(300)
+
   let retries = 0
   const maxRetries = 3
 
@@ -220,7 +224,7 @@ export async function runCloudInference(
     }
 
     try {
-      onProgress({ percent: 0, currentSegment: 0, totalSegments: 1, partialText: '' })
+      onProgress({ percent: 5, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
       const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST',
@@ -242,7 +246,7 @@ export async function runCloudInference(
         throw new Error(`API 错误 (${response.status}): ${errText}`)
       }
 
-      onProgress({ percent: 50, currentSegment: 0, totalSegments: 1, partialText: '' })
+      onProgress({ percent: 85, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
       const data = await response.json() as any
       const segments: LyricSegment[] = (data.segments || []).map((s: any, i: number) => ({
@@ -254,7 +258,7 @@ export async function runCloudInference(
         edited: false,
       }))
 
-      onProgress({ percent: 100, currentSegment: segments.length, totalSegments: segments.length, partialText: '' })
+      onProgress({ percent: 100, currentSegment: segments.length, totalSegments: segments.length, partialText: '', engine: 'cloud' })
 
       return { segments, language: data.language || config.language }
     } catch (e: any) {

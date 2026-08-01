@@ -40,6 +40,7 @@ export interface InferenceProgress {
   currentSegment: number     // 当前处理第几段
   totalSegments: number      // 总共几段
   partialText: string        // 已完成部分的文本
+  engine?: 'local' | 'cloud' // 推理引擎
 }
 
 export type AppStep = 'upload' | 'config' | 'inference' | 'result'
