@@ -4,13 +4,14 @@
 
 ## 功能
 
-- **音频播放** — 支持 MP3、WAV、FLAC、AAC、OGG、M4A 等常见格式
-- **波形可视化** — 实时显示音频波形，辅助定位歌词位置
+- **音频播放** — 支持 MP3、WAV、FLAC、AAC、OGG、M4A 等常见格式，支持拖拽导入
+- **真实波形** — 基于 PCM 数据提取真实音频波形，非模拟数据
 - **VAD 静音检测** — 自动识别人声段落
 - **本地推理** — 基于 whisper.cpp，离线可用，支持 tiny/base/small/medium 模型
 - **云端推理** — 基于 OpenAI Whisper API，识别精度更高
-- **歌词编辑** — 对识别结果逐句编辑和时间戳调整
-- **LRC 导出** — 导出标准 LRC 歌词文件
+- **歌词编辑** — 逐句编辑，支持撤销/重做（Ctrl+Z / Ctrl+Shift+Z）
+- **拖拽排序** — 拖拽调整歌词段落顺序
+- **多格式导出** — LRC、SRT、纯文本导出
 - **历史记录** — 保存识别历史，随时回顾
 
 ## 技术栈
@@ -62,29 +63,54 @@ npm run dist
 | macOS | DMG、zip |
 | Windows | NSIS 安装包、portable |
 
+### 测试
+
+```bash
+# 运行单元测试
+npm test
+
+# 运行 E2E 测试
+npm run test:e2e
+```
+
 ## 项目结构
 
 ```
-├── electron/            # Electron 主进程
-│   ├── main.ts          # 应用入口、窗口管理
-│   ├── preload.ts       # preload 脚本（contextBridge）
-│   ├── ipc-handlers.ts  # IPC 通信处理
-│   ├── audio-manager.ts # 音频格式转换、波形提取、VAD
-│   ├── model-manager.ts # 模型下载、本地/云端推理
-│   └── export-manager.ts# LRC 导出
-├── src/                 # React 渲染进程
-│   ├── components/      # UI 组件
-│   ├── hooks/           # 自定义 Hooks
-│   ├── types/           # TypeScript 类型定义
-│   └── utils/           # 工具函数（LRC 解析/格式化）
-├── resources/           # 打包资源（whisper 二进制、.so 库、图标）
-├── electron-builder.yml # electron-builder 打包配置
+├── electron/              # Electron 主进程
+│   ├── main.ts            # 应用入口、窗口管理、media:// 协议
+│   ├── preload.ts         # preload 脚本（contextBridge）
+│   ├── ipc-handlers.ts    # IPC 通信处理
+│   ├── audio-manager.ts   # 音频格式转换、真实波形提取、VAD
+│   ├── model-manager.ts   # 模型下载、本地/云端推理、SRT 解析
+│   └── export-manager.ts  # LRC/SRT/TXT 导出
+├── src/                   # React 渲染进程
+│   ├── components/        # UI 组件
+│   │   ├── AudioPlayer.tsx     # 音频播放器 + 波形可视化
+│   │   ├── AudioUploader.tsx   # 拖拽/选择音频导入
+│   │   ├── ConfigPanel.tsx     # 模型/引擎/语言配置
+│   │   ├── InferenceProgress.tsx # 推理进度条
+│   │   ├── LyricsResult/       # 识别结果（时间轴、编辑、导出）
+│   │   ├── HistoryPanel.tsx    # 历史记录列表
+│   │   ├── ModelManager.tsx    # 模型下载管理
+│   │   └── ErrorBoundary.tsx   # 全局错误边界
+│   ├── hooks/             # 自定义 Hooks
+│   │   ├── useAudio.ts        # 音频加载
+│   │   ├── useInference.ts    # 推理状态
+│   │   ├── useHistory.ts      # 历史管理
+│   │   └── useModels.ts       # 模型管理
+│   ├── types/             # TypeScript 类型定义
+│   └── utils/             # 工具函数（LRC/SRT 解析、时间格式化）
+├── tests/
+│   ├── unit/              # 单元测试（format、lrc、export、components）
+│   └── e2e/               # Playwright E2E 测试
+├── resources/             # 打包资源（whisper 二进制、.so 库、图标）
+├── electron-builder.yml   # electron-builder 打包配置
 └── package.json
 ```
 
 ## 模型管理
 
-本地推理使用 whisper.cpp GGML 模型，首次使用时会自动下载到用户数据目录。支持的模型：
+whisper.cpp GGML 模型，首次使用时会自动下载到用户数据目录。支持的模型：
 
 | 模型 | 大小 | 适合场景 |
 |------|------|---------|
@@ -92,6 +118,19 @@ npm run dist
 | base | ~140MB | 简单英文 |
 | small | ~460MB | 中英文日常使用 |
 | medium | ~1.4GB | 最高本地精度 |
+
+## 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| Ctrl+Z | 撤销歌词编辑 |
+| Ctrl+Shift+Z | 重做歌词编辑 |
+
+## 错误处理
+
+- **渲染层**：`ErrorBoundary` 组件捕获 React 渲染异常，显示友好提示和重试按钮
+- **主进程**：关键操作前检查文件是否存在，返回中文错误信息
+- **IPC 层**：根据错误类型返回分类错误码（`FILE_NOT_FOUND`、`CANCELLED` 等）
 
 ## 许可证
 
