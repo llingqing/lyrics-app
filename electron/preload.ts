@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadAudio: (filePath: string) => ipcRenderer.invoke('audio:load', filePath),
   startInference: (config: any) => ipcRenderer.invoke('inference:start', config),
   cancelInference: () => ipcRenderer.invoke('inference:cancel'),
+  retryInference: () => ipcRenderer.invoke('inference:retry'),
   saveResult: (result: any) => ipcRenderer.invoke('lyrics:save', result),
   exportFile: (format: string, content: string) => ipcRenderer.invoke('export:save', format, content),
   loadHistory: () => ipcRenderer.invoke('history:load'),

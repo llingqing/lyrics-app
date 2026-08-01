@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from '
 import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
+let lastConfig: InferenceConfig | null = null
 
 export function registerHandlers(win: BrowserWindow): void {
   ipcMain.handle('audio:select', async () => {
@@ -41,6 +42,7 @@ export function registerHandlers(win: BrowserWindow): void {
   })
 
   ipcMain.handle('inference:start', async (_event, config: InferenceConfig) => {
+    lastConfig = config
     try {
       const onProgress = (progress: any) => {
         win.webContents.send('inference:progress', progress)
@@ -65,6 +67,7 @@ export function registerHandlers(win: BrowserWindow): void {
       const code = msg.includes('不存在') ? 'FILE_NOT_FOUND'
         : msg.includes('下载') ? 'MODEL_DOWNLOAD_FAILED'
         : msg.includes('取消') ? 'CANCELLED'
+        : msg.includes('重试') || msg.includes('已') ? 'RETRIES_EXHAUSTED'
         : 'INFERENCE_FAILED'
       win.webContents.send('inference:error', { message: msg, code })
     }
@@ -72,6 +75,38 @@ export function registerHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('inference:cancel', async () => {
     cancelInference()
+  })
+
+  ipcMain.handle('inference:retry', async () => {
+    if (!lastConfig) throw new Error('没有可用的重试配置')
+    try {
+      const onProgress = (progress: any) => {
+        win.webContents.send('inference:progress', progress)
+      }
+
+      const engine = lastConfig.engine === 'cloud' ? runCloudInference : runLocalInference
+      const { segments, language } = await engine(lastConfig, onProgress)
+
+      const result: TranscriptionResult = {
+        id: randomUUID(),
+        audioFileName: originalFileNames.get(lastConfig.filePath) || lastConfig.filePath,
+        modelName: lastConfig.modelName,
+        engine: lastConfig.engine,
+        language,
+        segments,
+        createdAt: new Date().toISOString(),
+      }
+
+      win.webContents.send('inference:result', result)
+    } catch (e: any) {
+      const msg = e?.message || '未知错误'
+      const code = msg.includes('不存在') ? 'FILE_NOT_FOUND'
+        : msg.includes('下载') ? 'MODEL_DOWNLOAD_FAILED'
+        : msg.includes('取消') ? 'CANCELLED'
+        : msg.includes('重试') || msg.includes('已') ? 'RETRIES_EXHAUSTED'
+        : 'INFERENCE_FAILED'
+      win.webContents.send('inference:error', { message: msg, code })
+    }
   })
 
   ipcMain.handle('lyrics:save', async (_event, result: TranscriptionResult) => {

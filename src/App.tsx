@@ -120,14 +120,22 @@ export default function App() {
             <div className="flex flex-col items-center gap-4 pt-12">
               <InferenceProgress progress={progress} onCancel={cancel} />
               {error && !result && (
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 max-w-md">
+                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 max-w-md flex flex-col gap-2">
                   <p className="text-red-400 text-sm">{error}</p>
-                  <button
-                    onClick={handleBackToConfig}
-                    className="mt-2 text-sm text-red-400 underline"
-                  >
-                    返回重新配置
-                  </button>
+                  <div className="flex gap-3 mt-1">
+                    <button
+                      onClick={() => start()}
+                      className="px-3 py-1 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 text-sm hover:bg-blue-500/30 transition-colors"
+                    >
+                      ↩ 重试
+                    </button>
+                    <button
+                      onClick={handleBackToConfig}
+                      className="text-sm text-gray-400 underline hover:text-gray-300"
+                    >
+                      返回重新配置
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

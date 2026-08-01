@@ -17,6 +17,45 @@ const MODEL_URLS: Record<string, string> = {
 let currentProcess: ChildProcess | null = null
 let cancelled = false
 
+// ─── Retry helpers ─────────────────────────────────────────
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+interface RetryOptions {
+  maxRetries: number
+  baseDelayMs: number
+}
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  isRetryable: (error: any) => boolean,
+  options: Partial<RetryOptions> = {},
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 2
+  const baseDelayMs = options.baseDelayMs ?? 1000
+  let lastError: any
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (cancelled) throw new Error('推理已被取消')
+    try {
+      return await fn()
+    } catch (e: any) {
+      lastError = e
+      if (attempt >= maxRetries || !isRetryable(e)) {
+        if (attempt >= maxRetries) {
+          throw new Error(`${lastError.message}（已重试 ${maxRetries} 次）`)
+        }
+        throw e
+      }
+      await sleep(baseDelayMs * (attempt + 1))
+    }
+  }
+
+  throw lastError
+}
+
 function getModelsDir(): string {
   const dir = join(app.getPath('userData'), 'models')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -122,59 +161,71 @@ export async function runLocalInference(
     '-ng',  // disable GPU — pre-built binary may lack CUDA backend
   ]
 
-  return new Promise((resolve, reject) => {
-    currentProcess = spawn(whisperPath, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, LD_LIBRARY_PATH: resourcesDir } })
+  async function spawnInference(): Promise<{ segments: LyricSegment[]; language: string }> {
+    return new Promise((resolve, reject) => {
+      currentProcess = spawn(whisperPath, args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, LD_LIBRARY_PATH: resourcesDir },
+      })
 
-    let stderr = ''
+      let stderr = ''
 
-    currentProcess.stderr?.on('data', (data: Buffer) => {
-      stderr += data.toString()
-      // whisper.cpp 进度输出格式如: "progress = 45%"
-      const match = data.toString().match(/progress\s*=\s*(\d+)%/)
-      if (match) {
-        onProgress({
-          percent: parseInt(match[1], 10),
-          currentSegment: 0,
-          totalSegments: 1,
-          partialText: '',
-        })
-      }
+      currentProcess.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString()
+        const match = data.toString().match(/progress\s*=\s*(\d+)%/)
+        if (match) {
+          onProgress({
+            percent: parseInt(match[1], 10),
+            currentSegment: 0,
+            totalSegments: 1,
+            partialText: '',
+            engine: 'local',
+          })
+        }
+      })
+
+      currentProcess.on('close', (code) => {
+        currentProcess = null
+        if (cancelled) {
+          cleanup(srtPath)
+          return reject(new Error('推理已被取消'))
+        }
+        if (code !== 0) {
+          const errorMsg = extractError(stderr)
+          cleanup(srtPath)
+          return reject(new Error(errorMsg))
+        }
+
+        if (!existsSync(srtPath)) {
+          cleanup(srtPath)
+          return reject(new Error('推理完成但未生成输出'))
+        }
+
+        try {
+          const srtContent = require('fs').readFileSync(srtPath, 'utf-8')
+          const { segments, language } = parseSrt(srtContent, config)
+          cleanup(srtPath)
+          resolve({ segments, language })
+        } catch (e) {
+          cleanup(srtPath)
+          reject(e)
+        }
+      })
+
+      currentProcess.on('error', (err) => {
+        currentProcess = null
+        cleanup(srtPath)
+        reject(new Error(`whisper.cpp 进程启动失败: ${err.message}。请确认已下载 whisper 可执行文件到 resources/ 目录。`))
+      })
     })
+  }
 
-    currentProcess.on('close', (code) => {
-      currentProcess = null
-      if (cancelled) {
-        cleanup(srtPath)
-        return reject(new Error('推理已被取消'))
-      }
-      if (code !== 0) {
-        const errorMsg = extractError(stderr)
-        cleanup(srtPath)
-        return reject(new Error(errorMsg))
-      }
+  function isRetryableLocal(err: any): boolean {
+    const msg = err?.message || ''
+    return !msg.includes('文件不存在') && !msg.includes('模型加载失败') && !msg.includes('取消')
+  }
 
-      if (!existsSync(srtPath)) {
-        cleanup(srtPath)
-        return reject(new Error('推理完成但未生成输出'))
-      }
-
-      try {
-        const srtContent = require('fs').readFileSync(srtPath, 'utf-8')
-        const { segments, language } = parseSrt(srtContent, config)
-        cleanup(srtPath)
-        resolve({ segments, language })
-      } catch (e) {
-        cleanup(srtPath)
-        reject(e)
-      }
-    })
-
-    currentProcess.on('error', (err) => {
-      currentProcess = null
-      cleanup(srtPath)
-      reject(new Error(`whisper.cpp 进程启动失败: ${err.message}。请确认已下载 whisper 可执行文件到 resources/ 目录。`))
-    })
-  })
+  return retryWithBackoff(spawnInference, isRetryableLocal, { maxRetries: 2, baseDelayMs: 1000 })
 }
 
 function cleanup(srtPath?: string) {
@@ -200,7 +251,6 @@ export async function runCloudInference(
 
   cancelled = false
 
-  // 使用 OpenAI Whisper API
   const formData = new FormData()
   const fileBuffer = require('fs').readFileSync(config.filePath)
   formData.append('file', new Blob([fileBuffer]), 'audio.wav')
@@ -211,65 +261,48 @@ export async function runCloudInference(
     formData.append('language', config.language)
   }
 
-  // Phase 1: preparing to upload — brief tick so UI shows stage text
-  onProgress({ percent: 0, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
-  await sleep(300)
+  async function callApi(): Promise<{ segments: LyricSegment[]; language: string }> {
+    // Phase 1: preparing to upload
+    onProgress({ percent: 0, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
+    await sleep(300)
 
-  let retries = 0
-  const maxRetries = 3
+    onProgress({ percent: 5, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
-  while (retries <= maxRetries) {
-    if (cancelled) {
-      throw new Error('推理已被取消')
+    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.cloudApiKey}` },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const errText = await response.text()
+      if (response.status === 401) throw new Error('API Key 无效，请检查设置')
+      if (response.status === 429) throw new Error('API 请求过于频繁，请稍后重试')
+      throw new Error(`API 错误 (${response.status}): ${errText}`)
     }
 
-    try {
-      onProgress({ percent: 5, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
+    onProgress({ percent: 85, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
-      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${config.cloudApiKey}`,
-        },
-        body: formData,
-      })
+    const data = await response.json() as any
+    const segments: LyricSegment[] = (data.segments || []).map((s: any, i: number) => ({
+      id: `seg-${i}`,
+      start: s.start,
+      end: s.end,
+      text: s.text?.trim() || '',
+      confidence: (s.avg_logprob || 0) > -1 ? Math.min(1, Math.exp(s.avg_logprob || 0)) : 0.8,
+      edited: false,
+    }))
 
-      if (!response.ok) {
-        const errText = await response.text()
-        if (response.status === 401) throw new Error('API Key 无效，请检查设置')
-        if (response.status === 429) {
-          retries++
-          if (retries > maxRetries) throw new Error('API 请求过于频繁，请稍后重试')
-          await sleep(2000 * retries)
-          continue
-        }
-        throw new Error(`API 错误 (${response.status}): ${errText}`)
-      }
-
-      onProgress({ percent: 85, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
-
-      const data = await response.json() as any
-      const segments: LyricSegment[] = (data.segments || []).map((s: any, i: number) => ({
-        id: `seg-${i}`,
-        start: s.start,
-        end: s.end,
-        text: s.text?.trim() || '',
-        confidence: (s.avg_logprob || 0) > -1 ? Math.min(1, Math.exp(s.avg_logprob || 0)) : 0.8,
-        edited: false,
-      }))
-
-      onProgress({ percent: 100, currentSegment: segments.length, totalSegments: segments.length, partialText: '', engine: 'cloud' })
-
-      return { segments, language: data.language || config.language }
-    } catch (e: any) {
-      if (e?.message?.includes('API Key 无效')) throw e
-      if (retries >= maxRetries) throw e
-      retries++
-      await sleep(1000 * retries)
-    }
+    onProgress({ percent: 100, currentSegment: segments.length, totalSegments: segments.length, partialText: '', engine: 'cloud' })
+    return { segments, language: data.language || config.language }
   }
 
-  throw new Error('API 调用失败，已达最大重试次数')
+  function isRetryableCloud(err: any): boolean {
+    const msg = err?.message || ''
+    return !msg.includes('API Key 无效') && !msg.includes('取消')
+  }
+
+  return retryWithBackoff(callApi, isRetryableCloud, { maxRetries: 2, baseDelayMs: 1500 })
 }
 
 function parseSrt(srt: string, config: InferenceConfig): { segments: LyricSegment[]; language: string } {
@@ -306,8 +339,4 @@ function parseSrtTime(timeStr: string): number {
   const match = timeStr.match(/(\d+):(\d+):(\d+)[,.](\d+)/)
   if (!match) return 0
   return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3]) + parseInt(match[4]) / 1000
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }

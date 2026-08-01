@@ -61,6 +61,7 @@ export interface ElectronAPI {
   loadAudio: (filePath: string) => Promise<AudioInfo>
   startInference: (config: InferenceConfig) => Promise<void>
   cancelInference: () => Promise<void>
+  retryInference: () => Promise<void>
   saveResult: (result: TranscriptionResult) => Promise<void>
   exportFile: (format: 'txt' | 'lrc' | 'srt', content: string) => Promise<string | null>
   loadHistory: () => Promise<TranscriptionResult[]>
