@@ -12,6 +12,43 @@ import { app } from 'electron'
 const originalFileNames = new Map<string, string>()
 let lastConfig: InferenceConfig | null = null
 
+// ─── Shared helpers ────────────────────────────────────────
+
+function errorCode(e: any): string {
+  const msg = e?.message || ''
+  if (msg.includes('不存在')) return 'FILE_NOT_FOUND'
+  if (msg.includes('下载')) return 'MODEL_DOWNLOAD_FAILED'
+  if (msg.includes('取消')) return 'CANCELLED'
+  if (msg.includes('重试') || msg.includes('已')) return 'RETRIES_EXHAUSTED'
+  return 'INFERENCE_FAILED'
+}
+
+async function executeInference(
+  config: InferenceConfig,
+  win: BrowserWindow,
+): Promise<void> {
+  const onProgress = (progress: any) => {
+    win.webContents.send('inference:progress', progress)
+  }
+
+  const engine = config.engine === 'cloud' ? runCloudInference : runLocalInference
+  const { segments, language } = await engine(config, onProgress)
+
+  const result: TranscriptionResult = {
+    id: randomUUID(),
+    audioFileName: originalFileNames.get(config.filePath) || config.filePath,
+    modelName: config.modelName,
+    engine: config.engine,
+    language,
+    segments,
+    createdAt: new Date().toISOString(),
+  }
+
+  win.webContents.send('inference:result', result)
+}
+
+// ─── Register all IPC handlers ──────────────────────────────
+
 export function registerHandlers(win: BrowserWindow): void {
   ipcMain.handle('audio:select', async () => {
     try {
@@ -44,32 +81,9 @@ export function registerHandlers(win: BrowserWindow): void {
   ipcMain.handle('inference:start', async (_event, config: InferenceConfig) => {
     lastConfig = config
     try {
-      const onProgress = (progress: any) => {
-        win.webContents.send('inference:progress', progress)
-      }
-
-      const engine = config.engine === 'cloud' ? runCloudInference : runLocalInference
-      const { segments, language } = await engine(config, onProgress)
-
-      const result: TranscriptionResult = {
-        id: randomUUID(),
-        audioFileName: originalFileNames.get(config.filePath) || config.filePath,
-        modelName: config.modelName,
-        engine: config.engine,
-        language,
-        segments,
-        createdAt: new Date().toISOString(),
-      }
-
-      win.webContents.send('inference:result', result)
+      await executeInference(config, win)
     } catch (e: any) {
-      const msg = e?.message || '未知错误'
-      const code = msg.includes('不存在') ? 'FILE_NOT_FOUND'
-        : msg.includes('下载') ? 'MODEL_DOWNLOAD_FAILED'
-        : msg.includes('取消') ? 'CANCELLED'
-        : msg.includes('重试') || msg.includes('已') ? 'RETRIES_EXHAUSTED'
-        : 'INFERENCE_FAILED'
-      win.webContents.send('inference:error', { message: msg, code })
+      win.webContents.send('inference:error', { message: e?.message || '未知错误', code: errorCode(e) })
     }
   })
 
@@ -80,32 +94,9 @@ export function registerHandlers(win: BrowserWindow): void {
   ipcMain.handle('inference:retry', async () => {
     if (!lastConfig) throw new Error('没有可用的重试配置')
     try {
-      const onProgress = (progress: any) => {
-        win.webContents.send('inference:progress', progress)
-      }
-
-      const engine = lastConfig.engine === 'cloud' ? runCloudInference : runLocalInference
-      const { segments, language } = await engine(lastConfig, onProgress)
-
-      const result: TranscriptionResult = {
-        id: randomUUID(),
-        audioFileName: originalFileNames.get(lastConfig.filePath) || lastConfig.filePath,
-        modelName: lastConfig.modelName,
-        engine: lastConfig.engine,
-        language,
-        segments,
-        createdAt: new Date().toISOString(),
-      }
-
-      win.webContents.send('inference:result', result)
+      await executeInference(lastConfig, win)
     } catch (e: any) {
-      const msg = e?.message || '未知错误'
-      const code = msg.includes('不存在') ? 'FILE_NOT_FOUND'
-        : msg.includes('下载') ? 'MODEL_DOWNLOAD_FAILED'
-        : msg.includes('取消') ? 'CANCELLED'
-        : msg.includes('重试') || msg.includes('已') ? 'RETRIES_EXHAUSTED'
-        : 'INFERENCE_FAILED'
-      win.webContents.send('inference:error', { message: msg, code })
+      win.webContents.send('inference:error', { message: e?.message || '未知错误', code: errorCode(e) })
     }
   })
 
