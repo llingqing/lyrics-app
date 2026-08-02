@@ -24,6 +24,10 @@ function createWindow() {
     },
   })
 
+  // Loaded lazily: ipc-handlers pulls in audio-manager, which resolves the
+  // ffmpeg path from `app` at module scope. Requiring it here keeps that
+  // evaluation after the app is ready.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { registerHandlers } = require('./ipc-handlers')
   registerHandlers(mainWindow)
 

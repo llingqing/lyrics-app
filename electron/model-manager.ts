@@ -59,7 +59,7 @@ async function retryWithBackoff<T>(
       lastError = e
       if (attempt >= maxRetries || !isRetryable(e)) {
         if (attempt >= maxRetries) {
-          throw new Error(`${errorMessage(lastError)}（已重试 ${maxRetries} 次）`)
+          throw new Error(`${errorMessage(lastError)}（已重试 ${maxRetries} 次）`, { cause: e })
         }
         throw e
       }

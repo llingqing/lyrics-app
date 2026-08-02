@@ -19,34 +19,33 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
   const playerRef = useRef<AudioPlayerHandle>(null)
   const audioPath = audioInfo?.originalPath || audioInfo?.filePath || ''
 
-  // Undo / Redo
-  const undoStack = useRef<LyricSegment[][]>([])
-  const redoStack = useRef<LyricSegment[][]>([])
-  const [, setUndoTick] = useState(0) // force re-render when stacks change
+  // Undo / Redo — kept in state, not refs, so `canUndo`/`canRedo` stay
+  // correct during render without forcing an extra re-render.
+  const [undoStack, setUndoStack] = useState<LyricSegment[][]>([])
+  const [redoStack, setRedoStack] = useState<LyricSegment[][]>([])
 
   function pushUndo(snapshot: LyricSegment[]) {
-    undoStack.current.push(snapshot)
-    redoStack.current = [] // clear redo on new action
-    setUndoTick(n => n + 1)
+    setUndoStack(prev => [...prev, snapshot])
+    setRedoStack([]) // clear redo on new action
   }
 
   const undo = useCallback(() => {
-    if (undoStack.current.length === 0) return
-    const prev = undoStack.current.pop()!
-    redoStack.current.push(segments)
+    if (undoStack.length === 0) return
+    const prev = undoStack[undoStack.length - 1]
+    setUndoStack(s => s.slice(0, -1))
+    setRedoStack(s => [...s, segments])
     setSegments(prev)
     onSegmentsChange(prev)
-    setUndoTick(n => n + 1)
-  }, [segments, onSegmentsChange])
+  }, [segments, undoStack, onSegmentsChange])
 
   const redo = useCallback(() => {
-    if (redoStack.current.length === 0) return
-    const next = redoStack.current.pop()!
-    undoStack.current.push(segments)
+    if (redoStack.length === 0) return
+    const next = redoStack[redoStack.length - 1]
+    setRedoStack(s => s.slice(0, -1))
+    setUndoStack(s => [...s, segments])
     setSegments(next)
     onSegmentsChange(next)
-    setUndoTick(n => n + 1)
-  }, [segments, onSegmentsChange])
+  }, [segments, redoStack, onSegmentsChange])
 
   // Ctrl+Z / Ctrl+Shift+Z
   useEffect(() => {
@@ -99,8 +98,8 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
   }, [])
 
   const editingSegment = editingId ? segments.find(s => s.id === editingId) : null
-  const canUndo = undoStack.current.length > 0
-  const canRedo = redoStack.current.length > 0
+  const canUndo = undoStack.length > 0
+  const canRedo = redoStack.length > 0
 
   return (
     <div className="flex flex-col gap-6 p-8 max-w-2xl mx-auto">

@@ -63,7 +63,7 @@ export function registerHandlers(win: BrowserWindow): void {
       })
       return result.canceled ? null : result.filePaths[0]
     } catch (e: unknown) {
-      throw new Error(`文件选择失败: ${errorMessage(e)}`)
+      throw new Error(`文件选择失败: ${errorMessage(e)}`, { cause: e })
     }
   })
 
@@ -130,7 +130,7 @@ export function registerHandlers(win: BrowserWindow): void {
         }
       }
     } catch (e: unknown) {
-      throw new Error(`保存结果失败: ${errorMessage(e)}`)
+      throw new Error(`保存结果失败: ${errorMessage(e)}`, { cause: e })
     }
   })
 
@@ -157,7 +157,7 @@ export function registerHandlers(win: BrowserWindow): void {
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, MAX_HISTORY)
     } catch (e: unknown) {
-      throw new Error(`加载历史记录失败: ${errorMessage(e)}`)
+      throw new Error(`加载历史记录失败: ${errorMessage(e)}`, { cause: e })
     }
   })
 
@@ -166,7 +166,7 @@ export function registerHandlers(win: BrowserWindow): void {
       const historyFile = join(app.getPath('userData'), 'history', `${id}.json`)
       if (existsSync(historyFile)) unlinkSync(historyFile)
     } catch (e: unknown) {
-      throw new Error(`删除历史记录失败: ${errorMessage(e)}`)
+      throw new Error(`删除历史记录失败: ${errorMessage(e)}`, { cause: e })
     }
   })
 
@@ -187,7 +187,7 @@ export function registerHandlers(win: BrowserWindow): void {
         win.webContents.send('model:download-progress', { modelName, percent: p.percent })
       })
     } catch (e: unknown) {
-      throw new Error(`模型下载失败: ${errorMessage(e)}`)
+      throw new Error(`模型下载失败: ${errorMessage(e)}`, { cause: e })
     }
   })
 }
