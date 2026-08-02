@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import ConfigPanel from '../../src/components/ConfigPanel'
 import AudioPlayer from '../../src/components/AudioPlayer'
 import TimelineView from '../../src/components/LyricsResult/TimelineView'
@@ -24,14 +24,18 @@ describe('ConfigPanel', () => {
     format: 'wav' as const,
   }
 
-  it('renders engine selection buttons', () => {
-    render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+  it('renders engine selection buttons', async () => {
+    await act(async () => {
+      render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+    })
     expect(screen.getByText('🖥️ 本地模型')).toBeDefined()
     expect(screen.getByText('☁️ 云端 API')).toBeDefined()
   })
 
-  it('renders model selection when local engine is selected', () => {
-    render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+  it('renders model selection when local engine is selected', async () => {
+    await act(async () => {
+      render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+    })
     expect(screen.getByText('Tiny')).toBeDefined()
     expect(screen.getByText('Base')).toBeDefined()
   })
