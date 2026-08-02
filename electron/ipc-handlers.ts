@@ -2,7 +2,8 @@ import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { loadAudioInfo, convertToWav } from './audio-manager'
 import { runLocalInference, runCloudInference, cancelInference, downloadModel, getModelPath } from './model-manager'
 import { showExportDialog } from './export-manager'
-import { InferenceConfig, TranscriptionResult } from '../src/types'
+import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
+import { errorMessage } from '../src/utils/error'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -15,8 +16,8 @@ const MAX_HISTORY = 100
 
 // ─── Shared helpers ────────────────────────────────────────
 
-function errorCode(e: any): string {
-  const msg = e?.message || ''
+function errorCode(e: unknown): string {
+  const msg = errorMessage(e)
   if (msg.includes('不存在')) return 'FILE_NOT_FOUND'
   if (msg.includes('下载')) return 'MODEL_DOWNLOAD_FAILED'
   if (msg.includes('取消')) return 'CANCELLED'
@@ -28,7 +29,7 @@ async function executeInference(
   config: InferenceConfig,
   win: BrowserWindow,
 ): Promise<void> {
-  const onProgress = (progress: any) => {
+  const onProgress = (progress: InferenceProgress) => {
     win.webContents.send('inference:progress', progress)
   }
 
@@ -61,8 +62,8 @@ export function registerHandlers(win: BrowserWindow): void {
         properties: ['openFile'],
       })
       return result.canceled ? null : result.filePaths[0]
-    } catch (e: any) {
-      throw new Error(`文件选择失败: ${e.message}`)
+    } catch (e: unknown) {
+      throw new Error(`文件选择失败: ${errorMessage(e)}`)
     }
   })
 
@@ -83,8 +84,8 @@ export function registerHandlers(win: BrowserWindow): void {
     lastConfig = config
     try {
       await executeInference(config, win)
-    } catch (e: any) {
-      win.webContents.send('inference:error', { message: e?.message || '未知错误', code: errorCode(e) })
+    } catch (e: unknown) {
+      win.webContents.send('inference:error', { message: errorMessage(e), code: errorCode(e) })
     }
   })
 
@@ -96,8 +97,8 @@ export function registerHandlers(win: BrowserWindow): void {
     if (!lastConfig) throw new Error('没有可用的重试配置')
     try {
       await executeInference(lastConfig, win)
-    } catch (e: any) {
-      win.webContents.send('inference:error', { message: e?.message || '未知错误', code: errorCode(e) })
+    } catch (e: unknown) {
+      win.webContents.send('inference:error', { message: errorMessage(e), code: errorCode(e) })
     }
   })
 
@@ -128,8 +129,8 @@ export function registerHandlers(win: BrowserWindow): void {
           try { unlinkSync(entry.path) } catch {}
         }
       }
-    } catch (e: any) {
-      throw new Error(`保存结果失败: ${e.message}`)
+    } catch (e: unknown) {
+      throw new Error(`保存结果失败: ${errorMessage(e)}`)
     }
   })
 
@@ -155,8 +156,8 @@ export function registerHandlers(win: BrowserWindow): void {
       return results
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, MAX_HISTORY)
-    } catch (e: any) {
-      throw new Error(`加载历史记录失败: ${e.message}`)
+    } catch (e: unknown) {
+      throw new Error(`加载历史记录失败: ${errorMessage(e)}`)
     }
   })
 
@@ -164,8 +165,8 @@ export function registerHandlers(win: BrowserWindow): void {
     try {
       const historyFile = join(app.getPath('userData'), 'history', `${id}.json`)
       if (existsSync(historyFile)) unlinkSync(historyFile)
-    } catch (e: any) {
-      throw new Error(`删除历史记录失败: ${e.message}`)
+    } catch (e: unknown) {
+      throw new Error(`删除历史记录失败: ${errorMessage(e)}`)
     }
   })
 
@@ -185,8 +186,8 @@ export function registerHandlers(win: BrowserWindow): void {
       return await downloadModel(modelName, (p) => {
         win.webContents.send('model:download-progress', { modelName, percent: p.percent })
       })
-    } catch (e: any) {
-      throw new Error(`模型下载失败: ${e.message}`)
+    } catch (e: unknown) {
+      throw new Error(`模型下载失败: ${errorMessage(e)}`)
     }
   })
 }

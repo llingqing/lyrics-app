@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../types'
+import { errorMessage } from '../utils/error'
 
 export function useInference(config: InferenceConfig | null) {
   const [progress, setProgress] = useState<InferenceProgress | null>(null)
@@ -57,8 +58,8 @@ export function useInference(config: InferenceConfig | null) {
 
     try {
       await window.electronAPI.startInference(config)
-    } catch (e: any) {
-      setError(e.message)
+    } catch (e: unknown) {
+      setError(errorMessage(e))
       setIsRunning(false)
       if (virtualTimerRef.current) {
         clearInterval(virtualTimerRef.current)

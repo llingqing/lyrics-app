@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { AudioInfo } from '../types'
+import { errorMessage } from '../utils/error'
 
 export function useAudio() {
   const [audioInfo, setAudioInfo] = useState<AudioInfo | null>(null)
@@ -12,8 +13,8 @@ export function useAudio() {
       setLoading(true)
       const info = await window.electronAPI.loadAudio(filePath)
       setAudioInfo(info)
-    } catch (e: any) {
-      setError(e.message || '音频加载失败')
+    } catch (e: unknown) {
+      setError(errorMessage(e) || '音频加载失败')
     } finally {
       setLoading(false)
     }

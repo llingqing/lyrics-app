@@ -135,7 +135,7 @@ export function extractWaveform(filePath: string, samples = 200): Promise<number
 
             cleanup()
             resolve(waveform)
-          } catch (e: any) {
+          } catch {
             cleanup()
             // fallback: empty flat waveform
             resolve(Array(samples).fill(0.1))

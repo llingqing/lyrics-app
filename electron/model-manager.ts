@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, createWriteStream } from 'fs'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import { InferenceConfig, InferenceProgress, LyricSegment } from '../src/types'
+import { errorMessage } from '../src/utils/error'
 
 // whisper.cpp 的 GGML 模型下载地址
 const MODEL_URLS: Record<string, string> = {
@@ -28,24 +29,37 @@ interface RetryOptions {
   baseDelayMs: number
 }
 
+// Shape of the OpenAI Whisper transcription response (verbose_json)
+interface WhisperApiSegment {
+  start: number
+  end: number
+  text?: string
+  avg_logprob?: number
+}
+
+interface WhisperApiResponse {
+  language?: string
+  segments?: WhisperApiSegment[]
+}
+
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
-  isRetryable: (error: any) => boolean,
+  isRetryable: (error: unknown) => boolean,
   options: Partial<RetryOptions> = {},
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 2
   const baseDelayMs = options.baseDelayMs ?? 1000
-  let lastError: any
+  let lastError: unknown
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (cancelled) throw new Error('推理已被取消')
     try {
       return await fn()
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastError = e
       if (attempt >= maxRetries || !isRetryable(e)) {
         if (attempt >= maxRetries) {
-          throw new Error(`${lastError.message}（已重试 ${maxRetries} 次）`)
+          throw new Error(`${errorMessage(lastError)}（已重试 ${maxRetries} 次）`)
         }
         throw e
       }
@@ -220,8 +234,8 @@ export async function runLocalInference(
     })
   }
 
-  function isRetryableLocal(err: any): boolean {
-    const msg = err?.message || ''
+  function isRetryableLocal(err: unknown): boolean {
+    const msg = errorMessage(err)
     return !msg.includes('文件不存在') && !msg.includes('模型加载失败') && !msg.includes('取消')
   }
 
@@ -283,8 +297,8 @@ export async function runCloudInference(
 
     onProgress({ percent: 85, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
-    const data = await response.json() as any
-    const segments: LyricSegment[] = (data.segments || []).map((s: any, i: number) => ({
+    const data = await response.json() as WhisperApiResponse
+    const segments: LyricSegment[] = (data.segments || []).map((s, i) => ({
       id: `seg-${i}`,
       start: s.start,
       end: s.end,
@@ -297,8 +311,8 @@ export async function runCloudInference(
     return { segments, language: data.language || config.language }
   }
 
-  function isRetryableCloud(err: any): boolean {
-    const msg = err?.message || ''
+  function isRetryableCloud(err: unknown): boolean {
+    const msg = errorMessage(err)
     return !msg.includes('API Key 无效') && !msg.includes('取消')
   }
 
