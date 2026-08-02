@@ -47,6 +47,15 @@ export default tseslint.config(
       // Fetch-on-mount calls an async function, so setState lands in a
       // microtask rather than synchronously. The rule can't see that.
       'react-hooks/set-state-in-effect': 'warn',
+      // The renderer runs with nodeIntegration: false — importing a node
+      // builtin here builds fine but blanks the window at runtime.
+      'no-restricted-imports': ['error', {
+        paths: [
+          'path', 'fs', 'os', 'crypto', 'child_process', 'util', 'stream',
+          'http', 'https', 'net', 'url', 'zlib', 'events', 'buffer',
+        ].map(name => ({ name, message: 'Node builtins are unavailable in the renderer process.' })),
+        patterns: ['node:*'],
+      }],
     },
   },
 

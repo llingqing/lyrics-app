@@ -1,5 +1,3 @@
-import { extname } from 'path'
-
 export function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
@@ -16,6 +14,19 @@ export function formatDuration(seconds: number): string {
 
 const SUPPORTED_FORMATS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus'])
 
+/**
+ * Lowercased file extension including the leading dot, or '' if there is none.
+ * Hand-rolled rather than using node's `path.extname` because this module is
+ * imported by the renderer, where node builtins are not available.
+ */
+function fileExtension(filePath: string): string {
+  const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'))
+  const base = filePath.slice(lastSep + 1)
+  const dot = base.lastIndexOf('.')
+  // dot > 0 so dotfiles like ".mp3" count as having no extension
+  return dot > 0 ? base.slice(dot).toLowerCase() : ''
+}
+
 export function isFormatSupported(filePath: string): boolean {
-  return SUPPORTED_FORMATS.has(extname(filePath).toLowerCase())
+  return SUPPORTED_FORMATS.has(fileExtension(filePath))
 }
