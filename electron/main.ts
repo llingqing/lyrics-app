@@ -1,6 +1,7 @@
 import { app, BrowserWindow, protocol } from 'electron'
 import path from 'path'
 import { readFile, stat, open as fsOpen } from 'fs/promises'
+import { isAllowedMediaPath } from '../src/utils/validation'
 
 // 注册自定义协议用于播放本地音频（renderer 沙箱不能直接访问 file://）
 protocol.registerSchemesAsPrivileged([
@@ -38,6 +39,10 @@ app.whenReady().then(() => {
   protocol.handle('media', async (request) => {
     const url = new URL(request.url)
     const filePath = decodeURIComponent(url.pathname)
+    // Security: only serve files from known safe directories
+    if (!isAllowedMediaPath(filePath)) {
+      return new Response(null, { status: 403 })
+    }
     try {
       const fileStat = await stat(filePath)
       const fileSize = fileStat.size
