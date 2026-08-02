@@ -37,9 +37,15 @@ export default function AudioUploader({ onLoaded }: Props) {
         onDrop={(e: DragEvent) => {
           e.preventDefault()
           setIsDragging(false)
-          const file = e.dataTransfer.files[0]
+          interface ElectronFile extends File {
+  path: string
+}
+
+// ... (rest of the component)
+
+          const file = e.dataTransfer.files[0] as ElectronFile
           if (file) {
-            loadFile((file as any).path)
+            loadFile(file.path)
           }
         }}
       >
