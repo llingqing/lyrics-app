@@ -4,13 +4,15 @@ import { TranscriptionResult } from '../types'
 export function useHistory() {
   const [history, setHistory] = useState<TranscriptionResult[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
+      setError(null)
       const items = await window.electronAPI.loadHistory()
       setHistory(items)
     } catch {
-      // 静默失败
+      setError('历史记录加载失败')
     } finally {
       setLoading(false)
     }
@@ -28,5 +30,5 @@ export function useHistory() {
     setHistory(prev => prev.filter(item => item.id !== id))
   }, [])
 
-  return { history, loading, addToHistory, deleteFromHistory }
+  return { history, loading, error, addToHistory, deleteFromHistory }
 }

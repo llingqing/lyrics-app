@@ -8,11 +8,12 @@ const MODELS = [
 ]
 
 export default function ModelManager() {
-  const { available, downloading, download } = useModels()
+  const { available, downloading, download, error } = useModels()
 
   return (
     <div className="max-w-lg mx-auto mt-8">
       <h3 className="text-sm text-gray-400 mb-3 font-medium">模型管理</h3>
+      {error && <p className="text-sm text-red-400 mb-2">{error}</p>}
       <div className="grid grid-cols-4 gap-2">
         {MODELS.map(m => {
           const isDownloaded = available[m.value]

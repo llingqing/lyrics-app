@@ -58,7 +58,9 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
           setCurrentTime(0)
           setEnded(false)
         }
-        a.play().then(() => setPlaying(true)).catch(() => {})
+        a.play().then(() => setPlaying(true)).catch(err => {
+          console.error('[AudioPlayer] play() failed:', err?.message || err)
+        })
       } else {
         a.pause()
         setPlaying(false)
