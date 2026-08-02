@@ -4,6 +4,8 @@ import { runLocalInference, runCloudInference, cancelInference, downloadModel, g
 import { showExportDialog } from './export-manager'
 import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
 import { errorMessage } from '../src/utils/error'
+import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
+import { registerMediaPath } from './media-access'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -68,6 +70,9 @@ export function registerHandlers(win: BrowserWindow): void {
   })
 
   ipcMain.handle('audio:load', async (_event, filePath: string) => {
+    const pathError = validateFilePath(filePath)
+    if (pathError) throw new Error(pathError)
+
     const info = await loadAudioInfo(filePath)
     const originalFileName = info.fileName
     info.originalPath = filePath // 保留原始路径用于播放
@@ -76,11 +81,17 @@ export function registerHandlers(win: BrowserWindow): void {
     await convertToWav(filePath, tempWav)
     info.filePath = tempWav // 后续推理使用转换后的 WAV
     originalFileNames.set(tempWav, originalFileName)
+    // The player streams these over media://, so allow exactly them
+    registerMediaPath(filePath)
+    registerMediaPath(tempWav)
     win.webContents.send('audio:info', info)
     return info
   })
 
   ipcMain.handle('inference:start', async (_event, config: InferenceConfig) => {
+    const configError = validateInferenceConfig(config)
+    if (configError) throw new Error(configError)
+
     lastConfig = config
     try {
       await executeInference(config, win)

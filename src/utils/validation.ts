@@ -35,23 +35,3 @@ export function validateFilePath(path: unknown): string | null {
   if (/(?:^|\/)\.\.(?:$|\/)/.test(path)) return 'filePath contains illegal path traversal'
   return null
 }
-
-// Directories known to contain user-facing media files served via media:// protocol.
-// We derive these from common OS temp + Electron userData patterns rather than
-// importing electron to keep the function testable without electron mocking.
-const MEDIA_DIR_PATTERNS = [
-  /^\/tmp\//,                          // Linux/macOS tmpdir
-  /^\/var\/folders\//,                 // macOS per-user tmpdir
-  /^\/tmp\./,                          // BSD tmp snapshots
-]
-
-/**
- * Returns true when `filePath` is under a known safe directory.
- * This prevents the media:// protocol handler from serving arbitrary files.
- */
-export function isAllowedMediaPath(filePath: string): boolean {
-  if (!filePath) return false
-  // Reuse existing traversal guard
-  if (validateFilePath(filePath) !== null) return false
-  return MEDIA_DIR_PATTERNS.some(p => p.test(filePath))
-}

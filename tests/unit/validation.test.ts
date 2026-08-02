@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateInferenceConfig, validateFilePath, isAllowedMediaPath } from '../../src/utils/validation'
+import { validateInferenceConfig, validateFilePath } from '../../src/utils/validation'
 
 // ─── InferenceConfig validation ────────────────────────────
 
@@ -87,32 +87,5 @@ describe('validateFilePath', () => {
   it('rejects directory traversal attempts', () => {
     expect(validateFilePath('/etc/../../../passwd')).toBe('filePath contains illegal path traversal')
     expect(validateFilePath('foo/../../bar')).toBe('filePath contains illegal path traversal')
-  })
-})
-
-// ─── Media path safety ──────────────────────────────────────
-
-describe('isAllowedMediaPath', () => {
-  it('returns true for paths within allowed directories', () => {
-    const allowed = isAllowedMediaPath('/tmp/lyrics-input-abc.wav')
-    expect(allowed).toBe(true)
-  })
-
-  it('returns true for macOS tmpdir paths', () => {
-    expect(isAllowedMediaPath('/var/folders/x/y/z/audio.wav')).toBe(true)
-  })
-
-  it('rejects paths outside tmpdir', () => {
-    expect(isAllowedMediaPath('/etc/passwd')).toBe(false)
-    expect(isAllowedMediaPath('/home/user/.ssh/id_rsa')).toBe(false)
-    expect(isAllowedMediaPath('/root/secret.txt')).toBe(false)
-  })
-
-  it('rejects empty paths', () => {
-    expect(isAllowedMediaPath('')).toBe(false)
-  })
-
-  it('rejects traversal paths', () => {
-    expect(isAllowedMediaPath('/tmp/../../etc/passwd')).toBe(false)
   })
 })

@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
 import type { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
+
+// This script is sandboxed: it can only require 'electron' and a few node
+// builtins, never a relative module. Keep it free of local imports —
+// argument validation lives in the main process, which is the real trust
+// boundary anyway (preload runs inside the renderer process).
 
 type ProgressCallback = (progress: InferenceProgress) => void
 type ResultCallback = (result: TranscriptionResult) => void
@@ -11,16 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
 
   selectAudio: () => ipcRenderer.invoke('audio:select') as Promise<string | null>,
-  loadAudio: (filePath: string) => {
-    const err = validateFilePath(filePath)
-    if (err) return Promise.reject(new Error(err))
-    return ipcRenderer.invoke('audio:load', filePath)
-  },
-  startInference: (config: InferenceConfig) => {
-    const err = validateInferenceConfig(config)
-    if (err) return Promise.reject(new Error(err))
-    return ipcRenderer.invoke('inference:start', config)
-  },
+  loadAudio: (filePath: string) => ipcRenderer.invoke('audio:load', filePath),
+  startInference: (config: InferenceConfig) => ipcRenderer.invoke('inference:start', config),
   cancelInference: () => ipcRenderer.invoke('inference:cancel'),
   retryInference: () => ipcRenderer.invoke('inference:retry'),
   saveResult: (result: TranscriptionResult) => ipcRenderer.invoke('lyrics:save', result),
