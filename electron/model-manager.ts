@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
 import { join } from 'path'
 import { app } from 'electron'
-import { existsSync, mkdirSync, createWriteStream } from 'fs'
+import { existsSync, mkdirSync, createWriteStream, readFileSync, renameSync, unlinkSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import { InferenceConfig, InferenceProgress, LyricSegment } from '../src/types'
@@ -119,7 +119,7 @@ export async function downloadModel(
   }
   await Promise.race([pump(), writeErrorPromise])
 
-  require('fs').renameSync(tempPath, destPath)
+  renameSync(tempPath, destPath)
   return destPath
 }
 
@@ -216,7 +216,7 @@ export async function runLocalInference(
         }
 
         try {
-          const srtContent = require('fs').readFileSync(srtPath, 'utf-8')
+          const srtContent = readFileSync(srtPath, 'utf-8')
           const { segments, language } = parseSrt(srtContent, config)
           cleanup(srtPath)
           resolve({ segments, language })
@@ -244,7 +244,7 @@ export async function runLocalInference(
 
 function cleanup(srtPath?: string) {
   if (srtPath) {
-    try { require('fs').unlinkSync(srtPath) } catch { /* already cleaned up */ }
+    try { unlinkSync(srtPath) } catch { /* already cleaned up */ }
   }
 }
 
@@ -266,7 +266,7 @@ export async function runCloudInference(
   cancelled = false
 
   const formData = new FormData()
-  const fileBuffer = require('fs').readFileSync(config.filePath)
+  const fileBuffer = readFileSync(config.filePath)
   formData.append('file', new Blob([fileBuffer]), 'audio.wav')
   formData.append('model', 'whisper-1')
   formData.append('response_format', 'verbose_json')

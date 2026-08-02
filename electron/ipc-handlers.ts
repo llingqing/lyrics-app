@@ -7,7 +7,7 @@ import { errorMessage } from '../src/utils/error'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
@@ -111,13 +111,13 @@ export function registerHandlers(win: BrowserWindow): void {
       writeFileSync(historyFile, JSON.stringify(result, null, 2), 'utf-8')
 
       // LRU cleanup: remove oldest entries when exceeding max
-      const files = require('fs').readdirSync(historyDir)
-        .filter((f: string) => f.endsWith('.json'))
-        .map((f: string) => join(historyDir, f))
+      const files = readdirSync(historyDir)
+        .filter(f => f.endsWith('.json'))
+        .map(f => join(historyDir, f))
 
       if (files.length > MAX_HISTORY) {
         const sorted = files
-          .map((f: string) => {
+          .map(f => {
             try {
               const data = JSON.parse(readFileSync(f, 'utf-8'))
               return { path: f, time: new Date(data.createdAt || 0).getTime() }
@@ -144,7 +144,7 @@ export function registerHandlers(win: BrowserWindow): void {
       if (!existsSync(historyDir)) return []
 
       const results: TranscriptionResult[] = []
-      const files = require('fs').readdirSync(historyDir)
+      const files = readdirSync(historyDir)
       for (const file of files) {
         if (file.endsWith('.json')) {
           try {
