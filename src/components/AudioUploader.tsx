@@ -1,9 +1,15 @@
 import { useCallback, useState, useRef, useEffect, DragEvent } from 'react'
 import { AudioInfo } from '../types'
 import { useAudio } from '../hooks/useAudio'
+import { formatDuration } from '../utils/format'
 
 interface Props {
   onLoaded: (info: AudioInfo) => void
+}
+
+// Electron exposes the absolute path on dropped File objects
+interface ElectronFile extends File {
+  path: string
 }
 
 export default function AudioUploader({ onLoaded }: Props) {
@@ -37,12 +43,6 @@ export default function AudioUploader({ onLoaded }: Props) {
         onDrop={(e: DragEvent) => {
           e.preventDefault()
           setIsDragging(false)
-          interface ElectronFile extends File {
-  path: string
-}
-
-// ... (rest of the component)
-
           const file = e.dataTransfer.files[0] as ElectronFile
           if (file) {
             loadFile(file.path)
@@ -53,9 +53,7 @@ export default function AudioUploader({ onLoaded }: Props) {
           <div>
             <p className="text-lg font-semibold">{audioInfo.fileName}</p>
             <p className="text-sm text-gray-400 mt-1">
-              时长{' '}
-              {Math.floor(audioInfo.duration / 60)}:
-              {String(Math.floor(audioInfo.duration % 60)).padStart(2, '0')}
+              时长 {formatDuration(audioInfo.duration)}
               {' · '}
               {audioInfo.format.toUpperCase()}
             </p>

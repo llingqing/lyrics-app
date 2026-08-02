@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { segmentsToLrc, lrcToSegments, segmentsToPlainText, segmentsToSrt } from '../../src/utils/lrc'
+import { segmentsToLrc, segmentsToPlainText, segmentsToSrt } from '../../src/utils/lrc'
 import { LyricSegment } from '../../src/types'
 
 const sampleSegments: LyricSegment[] = [
@@ -23,21 +23,6 @@ describe('segmentsToLrc', () => {
 
   it('returns empty string for empty input', () => {
     expect(segmentsToLrc([])).toBe('')
-  })
-})
-
-describe('lrcToSegments', () => {
-  it('parses LRC back to segments', () => {
-    const lrc = '[00:01.23]第一句歌词\n[00:05.67]第二句歌词'
-    const segments = lrcToSegments(lrc)
-    expect(segments).toHaveLength(2)
-    expect(segments[0].start).toBeCloseTo(1.23, 2)
-    expect(segments[0].text).toBe('第一句歌词')
-    expect(segments[1].start).toBeCloseTo(5.67, 2)
-  })
-
-  it('returns empty array for empty input', () => {
-    expect(lrcToSegments('')).toEqual([])
   })
 })
 

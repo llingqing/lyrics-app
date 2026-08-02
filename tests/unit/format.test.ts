@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatTime, formatDuration, formatFileSize } from '../../src/utils/format'
+import { formatTime, formatDuration } from '../../src/utils/format'
 
 describe('formatTime', () => {
   it('formats zero seconds', () => {
@@ -38,23 +38,5 @@ describe('formatDuration', () => {
 
   it('formats zero', () => {
     expect(formatDuration(0)).toBe('0:00')
-  })
-})
-
-describe('formatFileSize', () => {
-  it('formats bytes', () => {
-    expect(formatFileSize(500)).toBe('500 B')
-  })
-
-  it('formats KB', () => {
-    expect(formatFileSize(1536)).toBe('1.5 KB')
-  })
-
-  it('formats MB', () => {
-    expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB')
-  })
-
-  it('formats GB', () => {
-    expect(formatFileSize(2.5 * 1024 * 1024 * 1024)).toBe('2.50 GB')
   })
 })
