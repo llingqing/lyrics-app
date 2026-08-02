@@ -11,6 +11,7 @@ import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
 let lastConfig: InferenceConfig | null = null
+const MAX_HISTORY = 100
 
 // ─── Shared helpers ────────────────────────────────────────
 
@@ -107,6 +108,26 @@ export function registerHandlers(win: BrowserWindow): void {
 
       const historyFile = join(historyDir, `${result.id}.json`)
       writeFileSync(historyFile, JSON.stringify(result, null, 2), 'utf-8')
+
+      // LRU cleanup: remove oldest entries when exceeding max
+      const files = require('fs').readdirSync(historyDir)
+        .filter((f: string) => f.endsWith('.json'))
+        .map((f: string) => join(historyDir, f))
+
+      if (files.length > MAX_HISTORY) {
+        const sorted = files
+          .map((f: string) => {
+            try {
+              const data = JSON.parse(readFileSync(f, 'utf-8'))
+              return { path: f, time: new Date(data.createdAt || 0).getTime() }
+            } catch { return { path: f, time: 0 } }
+          })
+          .sort((a, b) => a.time - b.time)
+
+        for (const entry of sorted.slice(0, files.length - MAX_HISTORY)) {
+          try { unlinkSync(entry.path) } catch {}
+        }
+      }
     } catch (e: any) {
       throw new Error(`保存结果失败: ${e.message}`)
     }
@@ -131,7 +152,9 @@ export function registerHandlers(win: BrowserWindow): void {
           } catch {}
         }
       }
-      return results.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      return results
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, MAX_HISTORY)
     } catch (e: any) {
       throw new Error(`加载历史记录失败: ${e.message}`)
     }
