@@ -9,10 +9,9 @@ interface Props {
   result: TranscriptionResult
   audioInfo: AudioInfo | null
   onSegmentsChange: (segments: LyricSegment[]) => void
-  onSave: () => void
 }
 
-export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSave }: Props) {
+export default function LyricsResult({ result, audioInfo, onSegmentsChange }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [segments, setSegments] = useState<LyricSegment[]>(result.segments)
   const [currentTime, setCurrentTime] = useState<number | undefined>(undefined)
@@ -127,12 +126,6 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange, onSa
             title="重做 (Ctrl+Shift+Z)"
           >
             ↪
-          </button>
-          <button
-            onClick={onSave}
-            className="py-2 px-4 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors text-sm"
-          >
-            保存到历史
           </button>
         </div>
       </div>

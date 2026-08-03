@@ -20,15 +20,30 @@ export function useHistory() {
 
   useEffect(() => { load() }, [load])
 
-  const addToHistory = useCallback(async (result: TranscriptionResult) => {
-    await window.electronAPI.saveResult(result)
-    setHistory(prev => [result, ...prev])
+  // 识别完成和每次编辑都会写同一条记录（同 id 同文件），所以按 id 覆盖而非追加。
+  // 调用方是 fire-and-forget（effect / 事件回调），错误在这里兜住并暴露给面板。
+  const saveToHistory = useCallback(async (result: TranscriptionResult) => {
+    try {
+      await window.electronAPI.saveResult(result)
+      setError(null)
+      setHistory(prev =>
+        prev.some(item => item.id === result.id)
+          ? prev.map(item => (item.id === result.id ? result : item))
+          : [result, ...prev],
+      )
+    } catch {
+      setError('保存历史记录失败')
+    }
   }, [])
 
   const deleteFromHistory = useCallback(async (id: string) => {
-    await window.electronAPI.deleteHistory(id)
-    setHistory(prev => prev.filter(item => item.id !== id))
+    try {
+      await window.electronAPI.deleteHistory(id)
+      setHistory(prev => prev.filter(item => item.id !== id))
+    } catch {
+      setError('删除历史记录失败')
+    }
   }, [])
 
-  return { history, loading, error, addToHistory, deleteFromHistory }
+  return { history, loading, error, saveToHistory, deleteFromHistory }
 }

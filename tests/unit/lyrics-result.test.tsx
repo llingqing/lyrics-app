@@ -27,7 +27,6 @@ function renderResult(onSegmentsChange = vi.fn()) {
       result={result}
       audioInfo={null}
       onSegmentsChange={onSegmentsChange}
-      onSave={vi.fn()}
     />
   )
   return onSegmentsChange

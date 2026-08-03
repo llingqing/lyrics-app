@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react'
 import { TranscriptionResult } from '../types'
-import { useHistory } from '../hooks/useHistory'
 
+// 纯展示组件：历史状态由 App 持有（useHistory 单实例），避免多实例状态不同步
 interface Props {
+  history: TranscriptionResult[]
+  loading: boolean
+  error: string | null
   onSelect: (result: TranscriptionResult) => void
+  onDelete: (id: string) => void
 }
 
-export default function HistoryPanel({ onSelect }: Props) {
-  const { history, loading, error, deleteFromHistory } = useHistory()
+export default function HistoryPanel({ history, loading, error, onSelect, onDelete }: Props) {
   const [filter, setFilter] = useState('')
 
   const filtered = useMemo(() => {
@@ -66,7 +69,7 @@ export default function HistoryPanel({ onSelect }: Props) {
             <button
               onClick={e => {
                 e.stopPropagation()
-                deleteFromHistory(item.id)
+                onDelete(item.id)
               }}
               className="text-xs text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
             >

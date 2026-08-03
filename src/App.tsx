@@ -20,7 +20,13 @@ export default function App() {
   const [displayedResult, setDisplayedResult] = useState<TranscriptionResult | null>(null)
 
   const { progress, result, error, isRunning, start, cancel, reset } = useInference(config)
-  const { addToHistory } = useHistory()
+  const {
+    history,
+    loading: historyLoading,
+    error: historyError,
+    saveToHistory,
+    deleteFromHistory,
+  } = useHistory()
 
   const handleAudioLoaded = useCallback((info: AudioInfo) => {
     setAudioInfo(info)
@@ -39,8 +45,9 @@ export default function App() {
       setSegments(result.segments)
       setDisplayedResult(result)
       setStep('result')
+      saveToHistory(result) // 识别完成即自动存档
     }
-  }, [result])
+  }, [result, saveToHistory])
 
   // 当进入 inference 步骤且 config 已设置时自动开始
   const startedRef = useRef(false)
@@ -58,11 +65,16 @@ export default function App() {
     }
   }, [step])
 
-  const handleSave = useCallback(async () => {
-    if (displayedResult) {
-      await addToHistory({ ...displayedResult, segments })
-    }
-  }, [displayedResult, segments, addToHistory])
+  // 编辑（改词/排序/撤销重做）落到当前记录上，直接写回历史
+  const handleSegmentsChange = useCallback(
+    (segs: LyricSegment[]) => {
+      setSegments(segs)
+      if (displayedResult) {
+        saveToHistory({ ...displayedResult, segments: segs })
+      }
+    },
+    [displayedResult, saveToHistory],
+  )
 
   const handleBackToUpload = useCallback(() => {
     setStep('upload')
@@ -80,6 +92,7 @@ export default function App() {
   const handleHistorySelect = useCallback((historyResult: TranscriptionResult) => {
     setSegments(historyResult.segments)
     setDisplayedResult(historyResult)
+    setAudioInfo(null) // 历史记录未存音频路径，清掉播放器避免配上别的文件的音频
     setStep('result')
   }, [])
 
@@ -145,16 +158,22 @@ export default function App() {
         {step === 'result' && displayedResult && (
           <ErrorBoundary>
             <LyricsResult
+              key={displayedResult.id} // 切换到另一条记录时重挂载，重置内部歌词/撤销栈
               result={{ ...displayedResult, segments }}
               audioInfo={audioInfo}
-              onSegmentsChange={setSegments}
-              onSave={handleSave}
+              onSegmentsChange={handleSegmentsChange}
             />
           </ErrorBoundary>
         )}
       </main>
 
-      <HistoryPanel onSelect={handleHistorySelect} />
+      <HistoryPanel
+        history={history}
+        loading={historyLoading}
+        error={historyError}
+        onSelect={handleHistorySelect}
+        onDelete={deleteFromHistory}
+      />
     </div>
   )
 }
