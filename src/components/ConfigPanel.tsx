@@ -1,19 +1,18 @@
 import { useState } from 'react'
 import { AudioInfo, InferenceConfig } from '../types'
 import { useModels } from '../hooks/useModels'
+import {
+  LOCAL_MODELS,
+  CLOUD_PRESETS,
+  loadCloudSettings,
+  saveCloudSettings,
+} from '../config/models'
 
 interface Props {
   audioInfo: AudioInfo
   onStart: (config: InferenceConfig) => void
   onBack: () => void
 }
-
-const MODELS = [
-  { value: 'tiny' as const, label: 'Tiny', desc: '~150MB, 最快', size: '150 MB' },
-  { value: 'base' as const, label: 'Base', desc: '~290MB, 推荐', size: '290 MB' },
-  { value: 'small' as const, label: 'Small', desc: '~950MB, 更准确', size: '950 MB' },
-  { value: 'medium' as const, label: 'Medium', desc: '~1.5GB, 最准确', size: '1.5 GB' },
-]
 
 const LANGUAGES = [
   { value: 'auto' as const, label: '自动检测' },
@@ -28,15 +27,33 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
   const [engine, setEngine] = useState<InferenceConfig['engine']>('local')
   const [language, setLanguage] = useState<InferenceConfig['language']>('auto')
   const [apiKey, setApiKey] = useState('')
+  // 云端服务商：预设 + 可编辑端点，上次的选择从 localStorage 预填（不含 key）
+  const [cloudSettings, setCloudSettings] = useState(() => {
+    const saved = loadCloudSettings()
+    return saved ?? { presetId: 'openai', baseUrl: CLOUD_PRESETS[0].baseUrl, model: CLOUD_PRESETS[0].model }
+  })
   const { available, downloading, download } = useModels()
 
+  const selectPreset = (presetId: string) => {
+    const preset = CLOUD_PRESETS.find(p => p.id === presetId)!
+    setCloudSettings(current => ({
+      presetId,
+      // 自定义保留已填的值，预设直接覆盖
+      baseUrl: preset.id === 'custom' ? current.baseUrl : preset.baseUrl,
+      model: preset.id === 'custom' ? current.model : preset.model,
+    }))
+  }
+
   const handleStart = () => {
+    if (engine === 'cloud') saveCloudSettings(cloudSettings)
     onStart({
       filePath: audioInfo.filePath,
       modelName,
       engine,
       language,
       cloudApiKey: engine === 'cloud' ? apiKey : undefined,
+      cloudBaseUrl: engine === 'cloud' && cloudSettings.baseUrl ? cloudSettings.baseUrl : undefined,
+      cloudModel: engine === 'cloud' && cloudSettings.model ? cloudSettings.model : undefined,
     })
   }
 
@@ -71,7 +88,7 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
         <div>
           <label className="text-sm text-gray-400 mb-2 block">模型大小</label>
           <div className="grid grid-cols-2 gap-2">
-            {MODELS.map(m => {
+            {LOCAL_MODELS.map(m => {
               const isDownloaded = available[m.value]
               const dlPercent = downloading[m.value]
               const isDownloading = dlPercent !== undefined && dlPercent < 100
@@ -111,7 +128,11 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
                       )}
                     </div>
                     <div className="text-xs text-gray-400">
-                      {isDownloading ? '下载中...' : isDownloaded ? m.desc : `点击下载 · ${m.desc}`}
+                      {isDownloading
+                        ? '下载中...'
+                        : isDownloaded
+                          ? `${m.size} · ${m.desc}`
+                          : `点击下载 · ${m.size} · ${m.desc}`}
                     </div>
                   </div>
                 </button>
@@ -144,17 +165,67 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
         </p>
       </div>
 
-      {/* 云端 API Key */}
+      {/* 云端 API 配置 */}
       {engine === 'cloud' && (
-        <div>
-          <label className="text-sm text-gray-400 mb-2 block">OpenAI API Key</label>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={e => setApiKey(e.target.value)}
-            placeholder="sk-..."
-            className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-blue-400"
-          />
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">服务商</label>
+            <div className="flex gap-2 flex-wrap">
+              {CLOUD_PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  className={`py-1.5 px-3 rounded-lg border text-sm transition-colors ${
+                    cloudSettings.presetId === p.id
+                      ? 'border-blue-400 bg-blue-400/10 text-blue-400'
+                      : 'border-gray-700 hover:border-gray-500'
+                  }`}
+                  onClick={() => selectPreset(p.id)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-600 mt-1.5">
+              任何 OpenAI 兼容的转写 API 都可以通过「自定义」接入
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">API 地址</label>
+            <input
+              type="text"
+              value={cloudSettings.baseUrl}
+              onChange={e =>
+                setCloudSettings(s => ({ ...s, presetId: 'custom', baseUrl: e.target.value }))
+              }
+              placeholder="https://api.example.com/v1"
+              className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">模型名</label>
+            <input
+              type="text"
+              value={cloudSettings.model}
+              onChange={e =>
+                setCloudSettings(s => ({ ...s, presetId: 'custom', model: e.target.value }))
+              }
+              placeholder="whisper-1"
+              className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">API Key</label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="sk-..."
+              className="w-full px-3 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-blue-400"
+            />
+          </div>
         </div>
       )}
 

@@ -7,8 +7,8 @@
 - **音频播放** — 支持 MP3、WAV、FLAC、AAC、OGG、M4A 等常见格式，支持拖拽导入
 - **真实波形** — 基于 PCM 数据提取真实音频波形，非模拟数据
 - **VAD 静音检测** — 自动识别人声段落
-- **本地推理** — 基于 whisper.cpp，离线可用，支持 tiny/base/small/medium 模型
-- **云端推理** — 基于 OpenAI Whisper API，识别精度更高
+- **本地推理** — 基于 whisper.cpp，离线可用，支持 tiny 到 large-v3 六档模型
+- **云端推理** — OpenAI 兼容 API，内置 OpenAI / Groq / 硅基流动预设，支持自定义第三方服务
 - **歌词编辑** — 逐句编辑，支持撤销/重做（Ctrl+Z / Ctrl+Shift+Z）
 - **拖拽排序** — 拖拽调整歌词段落顺序
 - **多格式导出** — LRC、SRT、纯文本导出
@@ -117,7 +117,13 @@ whisper.cpp GGML 模型，首次使用时会自动下载到用户数据目录。
 | tiny | ~75MB | 快速测试 |
 | base | ~140MB | 简单英文 |
 | small | ~460MB | 中英文日常使用 |
-| medium | ~1.4GB | 最高本地精度 |
+| medium | ~1.4GB | 高本地精度 |
+| large-v3-turbo | ~1.6GB | 快且准 |
+| large-v3 | ~3.1GB | 最高本地精度 |
+
+## 云端 / 第三方 API
+
+云端引擎走 OpenAI 兼容的 `/audio/transcriptions` 协议，内置 OpenAI、Groq、硅基流动预设，也可通过「自定义」填入任意兼容服务的 API 地址和模型名。服务商与端点设置会记住上次的选择（API Key 不落盘，每次需重新输入）。
 
 ## 快捷键
 

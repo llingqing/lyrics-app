@@ -57,6 +57,71 @@ describe('ConfigPanel', () => {
       })
     )
   })
+
+  it('offers the large local models', async () => {
+    await act(async () => {
+      render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+    })
+    expect(screen.getByText('Large v3 Turbo')).toBeDefined()
+    expect(screen.getByText('Large v3')).toBeDefined()
+  })
+
+  it('prefills base URL and model when a cloud provider preset is chosen', async () => {
+    await act(async () => {
+      render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+    })
+    fireEvent.click(screen.getByText('☁️ 云端 API'))
+    fireEvent.click(screen.getByText('Groq'))
+
+    expect(screen.getByDisplayValue('https://api.groq.com/openai/v1')).toBeDefined()
+    expect(screen.getByDisplayValue('whisper-large-v3-turbo')).toBeDefined()
+  })
+
+  it('passes third-party endpoint settings through onStart', async () => {
+    const onStart = vi.fn()
+    render(<ConfigPanel audioInfo={audioInfo} onStart={onStart} onBack={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('开始识别')).toBeDefined())
+
+    fireEvent.click(screen.getByText('☁️ 云端 API'))
+    fireEvent.click(screen.getByText('自定义'))
+    fireEvent.change(screen.getByPlaceholderText('https://api.example.com/v1'), {
+      target: { value: 'https://my.api.dev/v1' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('whisper-1'), {
+      target: { value: 'my-whisper' },
+    })
+    fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: 'sk-secret' } })
+    fireEvent.click(screen.getByText('开始识别'))
+
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        engine: 'cloud',
+        cloudApiKey: 'sk-secret',
+        cloudBaseUrl: 'https://my.api.dev/v1',
+        cloudModel: 'my-whisper',
+      })
+    )
+  })
+
+  it('restores the saved cloud provider settings on next mount (without the key)', async () => {
+    const onStart = vi.fn()
+    const { unmount } = render(<ConfigPanel audioInfo={audioInfo} onStart={onStart} onBack={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('开始识别')).toBeDefined())
+    fireEvent.click(screen.getByText('☁️ 云端 API'))
+    fireEvent.click(screen.getByText('Groq'))
+    fireEvent.change(screen.getByPlaceholderText('sk-...'), { target: { value: 'sk-secret' } })
+    fireEvent.click(screen.getByText('开始识别'))
+    unmount()
+
+    await act(async () => {
+      render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)
+    })
+    fireEvent.click(screen.getByText('☁️ 云端 API'))
+    // 服务商与端点被记住，API key 不落盘
+    expect(screen.getByDisplayValue('https://api.groq.com/openai/v1')).toBeDefined()
+    expect(screen.getByDisplayValue('whisper-large-v3-turbo')).toBeDefined()
+    expect((screen.getByPlaceholderText('sk-...') as HTMLInputElement).value).toBe('')
+  })
 })
 
 // ─── AudioPlayer ───────────────────────────────────────────

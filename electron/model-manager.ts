@@ -13,6 +13,8 @@ const MODEL_URLS: Record<string, string> = {
   base: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
   small: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
   medium: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin',
+  'large-v3-turbo': 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
+  'large-v3': 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
 }
 
 let currentProcess: ChildProcess | null = null
@@ -265,10 +267,14 @@ export async function runCloudInference(
 
   cancelled = false
 
+  // OpenAI 兼容协议：第三方服务只需换 baseUrl 和模型名
+  const baseUrl = (config.cloudBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
+  const apiModel = config.cloudModel || 'whisper-1'
+
   const formData = new FormData()
   const fileBuffer = readFileSync(config.filePath)
   formData.append('file', new Blob([fileBuffer]), 'audio.wav')
-  formData.append('model', 'whisper-1')
+  formData.append('model', apiModel)
   formData.append('response_format', 'verbose_json')
   formData.append('timestamp_granularities[]', 'segment')
   if (config.language !== 'auto') {
@@ -282,7 +288,7 @@ export async function runCloudInference(
 
     onProgress({ percent: 5, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const response = await fetch(`${baseUrl}/audio/transcriptions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.cloudApiKey}` },
       body: formData,

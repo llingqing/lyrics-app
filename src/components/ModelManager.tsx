@@ -1,11 +1,5 @@
 import { useModels } from '../hooks/useModels'
-
-const MODELS = [
-  { value: 'tiny' as const, label: 'Tiny', size: '150MB', desc: '最快' },
-  { value: 'base' as const, label: 'Base', size: '290MB', desc: '推荐' },
-  { value: 'small' as const, label: 'Small', size: '950MB', desc: '更准确' },
-  { value: 'medium' as const, label: 'Medium', size: '1.5GB', desc: '最准确' },
-]
+import { LOCAL_MODELS } from '../config/models'
 
 export default function ModelManager() {
   const { available, downloading, download, error } = useModels()
@@ -14,8 +8,8 @@ export default function ModelManager() {
     <div className="max-w-lg mx-auto mt-8">
       <h3 className="text-sm text-gray-400 mb-3 font-medium">模型管理</h3>
       {error && <p className="text-sm text-red-400 mb-2">{error}</p>}
-      <div className="grid grid-cols-4 gap-2">
-        {MODELS.map(m => {
+      <div className="grid grid-cols-3 gap-2">
+        {LOCAL_MODELS.map(m => {
           const isDownloaded = available[m.value]
           const dlPercent = downloading[m.value]
           const isDownloading = dlPercent !== undefined && dlPercent < 100

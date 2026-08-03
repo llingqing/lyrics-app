@@ -27,12 +27,16 @@ export interface TranscriptionResult {
   createdAt: string     // ISO 8601
 }
 
+export type LocalModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3-turbo' | 'large-v3'
+
 export interface InferenceConfig {
   filePath: string
-  modelName: 'tiny' | 'base' | 'small' | 'medium'
+  modelName: LocalModelName
   engine: 'local' | 'cloud'
   language: 'auto' | 'zh' | 'en' | 'ja' | 'ko'
   cloudApiKey?: string
+  cloudBaseUrl?: string  // OpenAI 兼容 API 根地址，默认 https://api.openai.com/v1
+  cloudModel?: string    // API 模型名，默认 whisper-1
 }
 
 export interface InferenceProgress {

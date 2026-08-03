@@ -42,7 +42,8 @@ async function executeInference(
   const result: TranscriptionResult = {
     id: randomUUID(),
     audioFileName: originalFileNames.get(config.filePath) || config.filePath,
-    modelName: config.modelName,
+    // 云端记录实际调用的 API 模型名，而不是本地模型选项
+    modelName: config.engine === 'cloud' ? config.cloudModel || 'whisper-1' : config.modelName,
     engine: config.engine,
     language,
     segments,
@@ -143,7 +144,7 @@ export function registerHandlers(win: BrowserWindow): void {
   })
 
   // 模型管理
-  const MODEL_NAMES = ['tiny', 'base', 'small', 'medium'] as const
+  const MODEL_NAMES = ['tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3'] as const
 
   ipcMain.handle('model:list', async () => {
     const result: Record<string, boolean> = {}

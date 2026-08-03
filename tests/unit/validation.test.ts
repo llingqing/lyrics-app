@@ -23,6 +23,38 @@ describe('validateInferenceConfig', () => {
     })).toBeNull()
   })
 
+  it('accepts the large local models', () => {
+    expect(validateInferenceConfig({ ...validConfig, modelName: 'large-v3-turbo' })).toBeNull()
+    expect(validateInferenceConfig({ ...validConfig, modelName: 'large-v3' })).toBeNull()
+  })
+
+  it('accepts a cloud config with custom base URL and model', () => {
+    expect(validateInferenceConfig({
+      ...validConfig,
+      engine: 'cloud' as const,
+      cloudApiKey: 'sk-test123',
+      cloudBaseUrl: 'https://api.groq.com/openai/v1',
+      cloudModel: 'whisper-large-v3-turbo',
+    })).toBeNull()
+  })
+
+  it('rejects a cloud base URL that is not an http(s) URL', () => {
+    const base = { ...validConfig, engine: 'cloud' as const, cloudApiKey: 'sk-test123' }
+    expect(validateInferenceConfig({ ...base, cloudBaseUrl: 'not-a-url' }))
+      .toBe('cloudBaseUrl must be an http(s) URL')
+    expect(validateInferenceConfig({ ...base, cloudBaseUrl: 'file:///etc/passwd' }))
+      .toBe('cloudBaseUrl must be an http(s) URL')
+  })
+
+  it('rejects a blank cloud model name', () => {
+    expect(validateInferenceConfig({
+      ...validConfig,
+      engine: 'cloud' as const,
+      cloudApiKey: 'sk-test123',
+      cloudModel: '   ',
+    })).toBe('cloudModel must be a non-empty string')
+  })
+
   it('rejects null/undefined config', () => {
     expect(validateInferenceConfig(null)).toBe('Missing inference config')
     expect(validateInferenceConfig(undefined)).toBe('Missing inference config')
@@ -49,7 +81,7 @@ describe('validateInferenceConfig', () => {
 
   it('rejects invalid modelName', () => {
     expect(validateInferenceConfig({ ...validConfig, modelName: 'large' as any }))
-      .toBe('Invalid modelName: must be one of tiny, base, small, medium')
+      .toBe('Invalid modelName: must be one of tiny, base, small, medium, large-v3-turbo, large-v3')
   })
 
   it('rejects invalid language', () => {
