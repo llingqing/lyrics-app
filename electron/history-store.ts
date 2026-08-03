@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readdir, stat, unlink, access } from 'fs/promises'
+import { mkdir, writeFile, readdir, stat, unlink, access, readFile } from 'fs/promises'
 import { join } from 'path'
 import { TranscriptionResult } from '../src/types'
 
@@ -33,4 +33,33 @@ export async function saveHistoryEntry(
   )
   const oldest = withTimes.sort((a, b) => a.time - b.time).slice(0, names.length - maxEntries)
   await Promise.all(oldest.map(entry => unlink(entry.path).catch(() => {})))
+}
+
+// 读取全部历史，按 createdAt 新→旧排序并截断。损坏的 JSON 跳过，不拖垮整个列表。
+export async function loadHistoryEntries(
+  historyDir: string,
+  maxEntries: number,
+): Promise<TranscriptionResult[]> {
+  const names = await readdir(historyDir).catch(() => [] as string[])
+  const entries = await Promise.all(
+    names
+      .filter(name => name.endsWith('.json'))
+      .map(async name => {
+        try {
+          return JSON.parse(await readFile(join(historyDir, name), 'utf-8')) as TranscriptionResult
+        } catch {
+          return null
+        }
+      }),
+  )
+  return entries
+    .filter((e): e is TranscriptionResult => e !== null)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, maxEntries)
+}
+
+export async function deleteHistoryEntry(historyDir: string, id: string): Promise<void> {
+  await unlink(join(historyDir, `${id}.json`)).catch((e: NodeJS.ErrnoException) => {
+    if (e.code !== 'ENOENT') throw e
+  })
 }

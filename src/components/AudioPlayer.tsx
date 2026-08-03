@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
+import { useRef, useState, useImperativeHandle, forwardRef, useMemo } from 'react'
 import { formatTime } from '../utils/format'
 
 interface Props {
@@ -18,25 +18,15 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
     const [playing, setPlaying] = useState(false)
     const [ended, setEnded] = useState(false)
     const [currentTime, setCurrentTime] = useState(0)
-    const rafRef = useRef<number>(0)
 
-    const tick = useCallback(() => {
-      if (audioRef.current) {
-        const t = audioRef.current.currentTime
-        setCurrentTime(t)
-        onTimeUpdate(t)
-      }
-      rafRef.current = requestAnimationFrame(tick)
-    }, [onTimeUpdate])
-
-    useEffect(() => {
-      if (playing) {
-        rafRef.current = requestAnimationFrame(tick)
-      } else {
-        cancelAnimationFrame(rafRef.current)
-      }
-      return () => cancelAnimationFrame(rafRef.current)
-    }, [playing, tick])
+    // 进度更新靠 <audio> 原生 timeupdate（浏览器约 4Hz），歌词高亮和进度条
+    // 用不到 60fps 的精度，rAF 循环会让整个结果区每帧重渲染一次
+    const handleTimeUpdate = () => {
+      const a = audioRef.current
+      if (!a) return
+      setCurrentTime(a.currentTime)
+      onTimeUpdate(a.currentTime)
+    }
 
     useImperativeHandle(ref, () => ({
       seekTo: (time: number) => {
@@ -80,7 +70,11 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
     }
 
     const progressRatio = duration > 0 ? currentTime / duration : 0
-    const waveformBars = waveform || Array.from({ length: 100 }, () => Math.random() * 0.6 + 0.2)
+    // 兜底波形是随机的，useMemo 固定住，否则每次重渲染都重新随机、条形跳动
+    const waveformBars = useMemo(
+      () => waveform || Array.from({ length: 100 }, () => Math.random() * 0.6 + 0.2),
+      [waveform],
+    )
 
     return (
       <div className="border border-gray-700 rounded-xl p-4 bg-gray-800/30">
@@ -88,6 +82,7 @@ const AudioPlayer = forwardRef<AudioPlayerHandle, Props>(
           ref={audioRef}
           src={`media://${audioPath}`}
           preload="auto"
+          onTimeUpdate={handleTimeUpdate}
           onEnded={() => { setPlaying(false); setEnded(true) }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}

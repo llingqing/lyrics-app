@@ -6,11 +6,11 @@ import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/
 import { errorMessage } from '../src/utils/error'
 import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
 import { registerMediaPath } from './media-access'
-import { saveHistoryEntry } from './history-store'
+import { saveHistoryEntry, loadHistoryEntries, deleteHistoryEntry } from './history-store'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs'
+import { existsSync } from 'fs'
 import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
@@ -128,22 +128,7 @@ export function registerHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('history:load', async () => {
     try {
-      const historyDir = join(app.getPath('userData'), 'history')
-      if (!existsSync(historyDir)) return []
-
-      const results: TranscriptionResult[] = []
-      const files = readdirSync(historyDir)
-      for (const file of files) {
-        if (file.endsWith('.json')) {
-          try {
-            const content = readFileSync(join(historyDir, file), 'utf-8')
-            results.push(JSON.parse(content))
-          } catch {}
-        }
-      }
-      return results
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, MAX_HISTORY)
+      return await loadHistoryEntries(join(app.getPath('userData'), 'history'), MAX_HISTORY)
     } catch (e: unknown) {
       throw new Error(`加载历史记录失败: ${errorMessage(e)}`, { cause: e })
     }
@@ -151,8 +136,7 @@ export function registerHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('history:delete', async (_event, id: string) => {
     try {
-      const historyFile = join(app.getPath('userData'), 'history', `${id}.json`)
-      if (existsSync(historyFile)) unlinkSync(historyFile)
+      await deleteHistoryEntry(join(app.getPath('userData'), 'history'), id)
     } catch (e: unknown) {
       throw new Error(`删除历史记录失败: ${errorMessage(e)}`, { cause: e })
     }

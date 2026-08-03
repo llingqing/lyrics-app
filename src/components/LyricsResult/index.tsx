@@ -14,9 +14,21 @@ interface Props {
 export default function LyricsResult({ result, audioInfo, onSegmentsChange }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [segments, setSegments] = useState<LyricSegment[]>(result.segments)
-  const [currentTime, setCurrentTime] = useState<number | undefined>(undefined)
+  // 只存「当前活跃段落 id」而不是原始播放时间：timeupdate 约每 250ms 一次，
+  // 但活跃段落几秒才换一行，这样歌词区只在换行时才重渲染
+  const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null)
   const playerRef = useRef<AudioPlayerHandle>(null)
   const audioPath = audioInfo?.originalPath || audioInfo?.filePath || ''
+
+  const segmentsRef = useRef(segments)
+  useEffect(() => {
+    segmentsRef.current = segments
+  }, [segments])
+
+  const handleTimeUpdate = useCallback((time: number) => {
+    const active = segmentsRef.current.find(s => time >= s.start && time <= s.end)
+    setActiveSegmentId(active ? active.id : null)
+  }, [])
 
   // Undo / Redo — kept in state, not refs, so `canUndo`/`canRedo` stay
   // correct during render without forcing an extra re-render.
@@ -46,21 +58,26 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange }: Pr
     onSegmentsChange(next)
   }, [segments, redoStack, onSegmentsChange])
 
-  // Ctrl+Z / Ctrl+Shift+Z
+  // Ctrl+Z / Ctrl+Shift+Z — 监听器只挂一次，最新的 undo/redo 通过 ref 读取，
+  // 避免每次编辑（segments 变化）都重新 add/removeEventListener
+  const undoRedoRef = useRef({ undo, redo })
+  useEffect(() => {
+    undoRedoRef.current = { undo, redo }
+  }, [undo, redo])
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        undo()
+        undoRedoRef.current.undo()
       } else if (e.ctrlKey && e.key === 'Z') {
         // Ctrl+Shift+Z (firefox/chrome sends capital Z for shift)
         e.preventDefault()
-        redo()
+        undoRedoRef.current.redo()
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [undo, redo])
+  }, [])
 
   // Reorder handler
   const handleReorder = useCallback((fromIndex: number, toIndex: number) => {
@@ -68,10 +85,11 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange }: Pr
     const updated = [...segments]
     const [moved] = updated.splice(fromIndex, 1)
     updated.splice(toIndex, 0, moved)
-    // Reassign IDs to keep them in visual order
-    updated.forEach((s, i) => { s.id = `seg-${i}` })
-    setSegments(updated)
-    onSegmentsChange(updated)
+    // Reassign IDs to keep them in visual order — new objects, or the shared
+    // references inside undo/redo snapshots get their ids rewritten too
+    const renumbered = updated.map((s, i) => ({ ...s, id: `seg-${i}` }))
+    setSegments(renumbered)
+    onSegmentsChange(renumbered)
   }, [segments, onSegmentsChange])
 
   const handleEdit = useCallback((id: string) => {
@@ -137,7 +155,7 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange }: Pr
           audioPath={audioPath}
           duration={audioInfo?.duration || result.segments[result.segments.length - 1]?.end || 0}
           waveform={audioInfo?.waveform}
-          onTimeUpdate={setCurrentTime}
+          onTimeUpdate={handleTimeUpdate}
         />
       )}
 
@@ -149,7 +167,7 @@ export default function LyricsResult({ result, audioInfo, onSegmentsChange }: Pr
         <div className="p-2 max-h-96 overflow-y-auto">
           <TimelineView
             segments={segments}
-            currentTime={currentTime}
+            activeSegmentId={activeSegmentId}
             onEdit={handleEdit}
             onSeek={handleSeek}
             onReorder={handleReorder}

@@ -1,16 +1,23 @@
-import { useState, DragEvent } from 'react'
+import { useState, DragEvent, memo } from 'react'
 import { LyricSegment } from '../../types'
 import { formatTime } from '../../utils/format'
 
 interface Props {
   segments: LyricSegment[]
-  currentTime?: number
+  activeSegmentId?: string | null
   onEdit: (id: string) => void
   onSeek: (time: number) => void
   onReorder: (fromIndex: number, toIndex: number) => void
 }
 
-export default function TimelineView({ segments, currentTime, onEdit, onSeek, onReorder }: Props) {
+// memo：播放中父组件每次 timeupdate 都会渲染，只有 activeSegmentId 真变了才需要重渲染歌词列表
+const TimelineView = memo(function TimelineView({
+  segments,
+  activeSegmentId,
+  onEdit,
+  onSeek,
+  onReorder,
+}: Props) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   function handleDragStart(e: DragEvent<HTMLDivElement>, index: number) {
@@ -40,7 +47,7 @@ export default function TimelineView({ segments, currentTime, onEdit, onSeek, on
   return (
     <div className="flex flex-col gap-1">
       {segments.map((seg, i) => {
-        const isActive = currentTime != null && currentTime >= seg.start && currentTime <= seg.end
+        const isActive = seg.id === activeSegmentId
         const isDragOver = dragOverIndex === i
         return (
           <div
@@ -106,4 +113,6 @@ export default function TimelineView({ segments, currentTime, onEdit, onSeek, on
       })}
     </div>
   )
-}
+})
+
+export default TimelineView

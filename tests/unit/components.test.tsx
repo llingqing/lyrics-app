@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import ConfigPanel from '../../src/components/ConfigPanel'
 import AudioPlayer from '../../src/components/AudioPlayer'
 import TimelineView from '../../src/components/LyricsResult/TimelineView'
@@ -105,6 +105,46 @@ describe('AudioPlayer', () => {
     const bars = container.querySelectorAll('[style*="height"]')
     expect(bars.length).toBe(100)
   })
+
+  it('keeps the same fallback waveform across re-renders', () => {
+    const { container } = render(
+      <AudioPlayer
+        audioPath="/tmp/test.wav"
+        duration={120}
+        onTimeUpdate={vi.fn()}
+      />
+    )
+    const heights = () =>
+      Array.from(container.querySelectorAll<HTMLElement>('[style*="height"]')).map(
+        el => el.style.height,
+      )
+    const before = heights()
+
+    // timeupdate 触发一次 state 更新重渲染，兜底波形不应重新随机
+    const audio = container.querySelector('audio')!
+    Object.defineProperty(audio, 'currentTime', { value: 30, writable: true })
+    fireEvent.timeUpdate(audio)
+
+    expect(heights()).toEqual(before)
+  })
+
+  it('updates the time display and notifies the parent on native timeupdate events', () => {
+    const onTimeUpdate = vi.fn()
+    const { container } = render(
+      <AudioPlayer
+        audioPath="/tmp/test.wav"
+        duration={120}
+        waveform={[0.5, 0.5]}
+        onTimeUpdate={onTimeUpdate}
+      />
+    )
+    const audio = container.querySelector('audio')!
+    Object.defineProperty(audio, 'currentTime', { value: 63, writable: true })
+    fireEvent.timeUpdate(audio)
+
+    expect(screen.getByText('01:03.000')).toBeDefined()
+    expect(onTimeUpdate).toHaveBeenCalledWith(63)
+  })
 })
 
 // ─── TimelineView ──────────────────────────────────────────
@@ -154,6 +194,22 @@ describe('TimelineView', () => {
     )
     screen.getByText('00:00.000').click()
     expect(onSeek).toHaveBeenCalledWith(0)
+  })
+
+  it('highlights only the active segment row', () => {
+    render(
+      <TimelineView
+        segments={segments}
+        activeSegmentId="seg-1"
+        onEdit={vi.fn()}
+        onSeek={vi.fn()}
+        onReorder={vi.fn()}
+      />
+    )
+    const activeRow = screen.getByText('Second line').closest('[draggable]')!
+    const idleRow = screen.getByText('Hello world').closest('[draggable]')!
+    expect(activeRow.className).toContain('bg-blue-500/10')
+    expect(idleRow.className).not.toContain('bg-blue-500/10')
   })
 })
 

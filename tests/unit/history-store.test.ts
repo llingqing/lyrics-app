@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, readFile, readdir, writeFile, utimes, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { saveHistoryEntry } from '../../electron/history-store'
+import { saveHistoryEntry, loadHistoryEntries, deleteHistoryEntry } from '../../electron/history-store'
 import { TranscriptionResult } from '../../src/types'
 
 function makeResult(id: string): TranscriptionResult {
@@ -62,5 +62,46 @@ describe('saveHistoryEntry', () => {
 
     const files = (await readdir(dir)).sort()
     expect(files).toEqual(['a.json', 'b.json', 'c.json', 'd.json'])
+  })
+})
+
+describe('loadHistoryEntries', () => {
+  it('returns an empty list when the directory does not exist', async () => {
+    expect(await loadHistoryEntries(join(dir, 'missing'), 100)).toEqual([])
+  })
+
+  it('returns entries sorted by createdAt, newest first, capped at max', async () => {
+    await mkdir(dir, { recursive: true })
+    const dates = { a: '2026-01-01', b: '2026-03-01', c: '2026-02-01' }
+    for (const [id, day] of Object.entries(dates)) {
+      const entry = { ...makeResult(id), createdAt: `${day}T00:00:00.000Z` }
+      await writeFile(join(dir, `${id}.json`), JSON.stringify(entry))
+    }
+
+    const entries = await loadHistoryEntries(dir, 2)
+    expect(entries.map(e => e.id)).toEqual(['b', 'c'])
+  })
+
+  it('skips corrupt JSON files instead of failing the whole load', async () => {
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'good.json'), JSON.stringify(makeResult('good')))
+    await writeFile(join(dir, 'bad.json'), '{oops')
+
+    const entries = await loadHistoryEntries(dir, 100)
+    expect(entries.map(e => e.id)).toEqual(['good'])
+  })
+})
+
+describe('deleteHistoryEntry', () => {
+  it('removes the entry file', async () => {
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'r1.json'), JSON.stringify(makeResult('r1')))
+    await deleteHistoryEntry(dir, 'r1')
+    expect(await readdir(dir)).toEqual([])
+  })
+
+  it('is a no-op when the entry does not exist', async () => {
+    await mkdir(dir, { recursive: true })
+    await expect(deleteHistoryEntry(dir, 'nope')).resolves.toBeUndefined()
   })
 })
