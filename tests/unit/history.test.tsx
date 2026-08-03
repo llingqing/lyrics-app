@@ -83,6 +83,89 @@ describe('useHistory', () => {
   })
 })
 
+describe('useHistory debounced save', () => {
+  it('coalesces rapid saveToHistoryDebounced calls into one IPC save with the latest data', async () => {
+    const { result } = renderHook(() => useHistory())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    vi.useFakeTimers()
+    try {
+      act(() => {
+        result.current.saveToHistoryDebounced(makeResult({ audioFileName: 'v1.mp3' }))
+        result.current.saveToHistoryDebounced(makeResult({ audioFileName: 'v2.mp3' }))
+        result.current.saveToHistoryDebounced(makeResult({ audioFileName: 'v3.mp3' }))
+      })
+      expect(api.saveResult).not.toHaveBeenCalled()
+
+      await act(() => vi.advanceTimersByTimeAsync(600))
+      expect(api.saveResult).toHaveBeenCalledOnce()
+      expect(api.saveResult.mock.calls[0][0].audioFileName).toBe('v3.mp3')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('flushPendingSave writes the pending edit immediately', async () => {
+    const { result } = renderHook(() => useHistory())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    vi.useFakeTimers()
+    try {
+      act(() => {
+        result.current.saveToHistoryDebounced(makeResult({ audioFileName: 'pending.mp3' }))
+      })
+      expect(api.saveResult).not.toHaveBeenCalled()
+
+      await act(async () => {
+        result.current.flushPendingSave()
+        await vi.runAllTimersAsync()
+      })
+      expect(api.saveResult).toHaveBeenCalledOnce()
+      expect(api.saveResult.mock.calls[0][0].audioFileName).toBe('pending.mp3')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('flushPendingSave is a no-op when nothing is pending', async () => {
+    const { result } = renderHook(() => useHistory())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    await act(() => {
+      result.current.flushPendingSave()
+    })
+    expect(api.saveResult).not.toHaveBeenCalled()
+  })
+})
+
+describe('useHistory save serialization', () => {
+  it('does not start a second IPC save until the first one resolves', async () => {
+    let resolveFirst!: () => void
+    api.saveResult
+      .mockImplementationOnce(() => new Promise<void>(resolve => { resolveFirst = resolve }))
+      .mockResolvedValue(undefined)
+
+    const { result } = renderHook(() => useHistory())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => {
+      result.current.saveToHistory(makeResult({ audioFileName: 'first.mp3' }))
+      result.current.saveToHistory(makeResult({ audioFileName: 'second.mp3' }))
+    })
+
+    // 第一次还没返回，第二次不能发出去，否则可能旧覆盖新
+    await waitFor(() => expect(api.saveResult).toHaveBeenCalledOnce())
+    await act(async () => {}) // 再排空一轮微任务，确认第二次确实被挡住
+    expect(api.saveResult).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      resolveFirst()
+    })
+    await waitFor(() => expect(api.saveResult).toHaveBeenCalledTimes(2))
+    expect(api.saveResult.mock.calls[1][0].audioFileName).toBe('second.mp3')
+    expect(result.current.history[0].audioFileName).toBe('second.mp3')
+  })
+})
+
 describe('HistoryPanel', () => {
   const noop = () => {}
 
@@ -110,13 +193,32 @@ describe('HistoryPanel', () => {
     expect(screen.getByText('暂无历史记录')).toBeInTheDocument()
   })
 
-  it('calls onDelete with the entry id', () => {
+  it('requires a second confirming click before deleting', () => {
+    const onDelete = vi.fn()
+    const onSelect = vi.fn()
+    render(
+      <HistoryPanel history={[makeResult()]} loading={false} error={null} onSelect={onSelect} onDelete={onDelete} />,
+    )
+    fireEvent.click(screen.getByText('删除'))
+    expect(onDelete).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('确认删除'))
+    expect(onDelete).toHaveBeenCalledWith('r1')
+    expect(onSelect).not.toHaveBeenCalled() // 确认点击不应顺带打开该条记录
+  })
+
+  it('cancels pending delete confirmation when the mouse leaves the entry', () => {
     const onDelete = vi.fn()
     render(
       <HistoryPanel history={[makeResult()]} loading={false} error={null} onSelect={vi.fn()} onDelete={onDelete} />,
     )
+    const entry = screen.getByText('song.mp3').closest('div[class*="group"]')!
     fireEvent.click(screen.getByText('删除'))
-    expect(onDelete).toHaveBeenCalledWith('r1')
+    fireEvent.mouseLeave(entry)
+    // 移开后确认态复位，重新显示「删除」
+    expect(screen.getByText('删除')).toBeInTheDocument()
+    expect(screen.queryByText('确认删除')).not.toBeInTheDocument()
+    expect(onDelete).not.toHaveBeenCalled()
   })
 })
 
@@ -144,16 +246,53 @@ describe('App auto-save', () => {
     emitResult(makeResult())
     await waitFor(() => expect(api.saveResult).toHaveBeenCalledOnce())
 
-    fireEvent.click(screen.getByText('第一句'))
-    // 不用 getByRole('textbox')：历史面板的搜索框也是 textbox，编辑框以预填文本定位
-    fireEvent.change(screen.getByDisplayValue('第一句'), { target: { value: '改过的第一句' } })
-    fireEvent.click(screen.getByText('保存'))
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByText('第一句'))
+      // 不用 getByRole('textbox')：历史面板的搜索框也是 textbox，编辑框以预填文本定位
+      fireEvent.change(screen.getByDisplayValue('第一句'), { target: { value: '改过的第一句' } })
+      fireEvent.click(screen.getByText('保存'))
 
-    await waitFor(() => expect(api.saveResult).toHaveBeenCalledTimes(2))
+      // 编辑保存有防抖，不应立即触发第二次 IPC
+      expect(api.saveResult).toHaveBeenCalledOnce()
+
+      await act(() => vi.advanceTimersByTimeAsync(600))
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(api.saveResult).toHaveBeenCalledTimes(2)
     const saved = api.saveResult.mock.calls[1][0]
     expect(saved.id).toBe('r1')
     expect(saved.segments[0].text).toBe('改过的第一句')
     expect(screen.getAllByText('song.mp3')).toHaveLength(1)
+  })
+
+  it('flushes a pending edit save when a history entry is selected', async () => {
+    api.loadHistory.mockResolvedValue([makeResult({ id: 'old-1', audioFileName: 'old.mp3' })])
+    render(<App />)
+    await screen.findByText('old.mp3')
+    emitResult(makeResult())
+    await waitFor(() => expect(api.saveResult).toHaveBeenCalledOnce())
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByText('第一句'))
+      fireEvent.change(screen.getByDisplayValue('第一句'), { target: { value: '临走前的编辑' } })
+      fireEvent.click(screen.getByText('保存'))
+      expect(api.saveResult).toHaveBeenCalledOnce()
+
+      // 防抖窗口内切到历史记录：待写的编辑必须先落盘，不能丢
+      fireEvent.click(screen.getByText('old.mp3'))
+      await act(() => vi.runAllTimersAsync())
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(api.saveResult).toHaveBeenCalledTimes(2)
+    const saved = api.saveResult.mock.calls[1][0]
+    expect(saved.id).toBe('r1')
+    expect(saved.segments[0].text).toBe('临走前的编辑')
   })
 })
 

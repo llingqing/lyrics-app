@@ -25,6 +25,8 @@ export default function App() {
     loading: historyLoading,
     error: historyError,
     saveToHistory,
+    saveToHistoryDebounced,
+    flushPendingSave,
     deleteFromHistory,
   } = useHistory()
 
@@ -65,36 +67,41 @@ export default function App() {
     }
   }, [step])
 
-  // 编辑（改词/排序/撤销重做）落到当前记录上，直接写回历史
+  // 编辑（改词/排序/撤销重做）落到当前记录上，防抖后写回历史
   const handleSegmentsChange = useCallback(
     (segs: LyricSegment[]) => {
       setSegments(segs)
       if (displayedResult) {
-        saveToHistory({ ...displayedResult, segments: segs })
+        saveToHistoryDebounced({ ...displayedResult, segments: segs })
       }
     },
-    [displayedResult, saveToHistory],
+    [displayedResult, saveToHistoryDebounced],
   )
 
   const handleBackToUpload = useCallback(() => {
+    flushPendingSave()
     setStep('upload')
     setAudioInfo(null)
     setConfig(null)
     setSegments([])
     setDisplayedResult(null)
     reset()
-  }, [reset])
+  }, [reset, flushPendingSave])
 
   const handleBackToConfig = useCallback(() => {
     setStep('config')
   }, [])
 
-  const handleHistorySelect = useCallback((historyResult: TranscriptionResult) => {
-    setSegments(historyResult.segments)
-    setDisplayedResult(historyResult)
-    setAudioInfo(null) // 历史记录未存音频路径，清掉播放器避免配上别的文件的音频
-    setStep('result')
-  }, [])
+  const handleHistorySelect = useCallback(
+    (historyResult: TranscriptionResult) => {
+      flushPendingSave() // 上一条的待写编辑先落盘再切换
+      setSegments(historyResult.segments)
+      setDisplayedResult(historyResult)
+      setAudioInfo(null) // 历史记录未存音频路径，清掉播放器避免配上别的文件的音频
+      setStep('result')
+    },
+    [flushPendingSave],
+  )
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -12,6 +12,8 @@ interface Props {
 
 export default function HistoryPanel({ history, loading, error, onSelect, onDelete }: Props) {
   const [filter, setFilter] = useState('')
+  // 删除按钮 hover 才出现，容易误触，改成两步确认；移开鼠标即复位
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
 
   const filtered = useMemo(() => {
     if (!filter.trim()) return history
@@ -57,6 +59,7 @@ export default function HistoryPanel({ history, loading, error, onSelect, onDele
             key={item.id}
             className="flex items-center gap-3 px-8 py-2.5 hover:bg-gray-800/50 cursor-pointer group transition-colors"
             onClick={() => onSelect(item)}
+            onMouseLeave={() => setConfirmingId(current => (current === item.id ? null : current))}
           >
             <div className="flex-1 min-w-0">
               <p className="text-sm truncate">{item.audioFileName}</p>
@@ -69,11 +72,20 @@ export default function HistoryPanel({ history, loading, error, onSelect, onDele
             <button
               onClick={e => {
                 e.stopPropagation()
-                onDelete(item.id)
+                if (confirmingId === item.id) {
+                  setConfirmingId(null)
+                  onDelete(item.id)
+                } else {
+                  setConfirmingId(item.id)
+                }
               }}
-              className="text-xs text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+              className={
+                confirmingId === item.id
+                  ? 'text-xs text-red-400 transition-all'
+                  : 'text-xs text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all'
+              }
             >
-              删除
+              {confirmingId === item.id ? '确认删除' : '删除'}
             </button>
           </div>
         ))}

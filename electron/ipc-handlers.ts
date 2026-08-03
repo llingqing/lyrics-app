@@ -6,10 +6,11 @@ import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/
 import { errorMessage } from '../src/utils/error'
 import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
 import { registerMediaPath } from './media-access'
+import { saveHistoryEntry } from './history-store'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
@@ -115,31 +116,7 @@ export function registerHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('lyrics:save', async (_event, result: TranscriptionResult) => {
     try {
-      const historyDir = join(app.getPath('userData'), 'history')
-      if (!existsSync(historyDir)) mkdirSync(historyDir, { recursive: true })
-
-      const historyFile = join(historyDir, `${result.id}.json`)
-      writeFileSync(historyFile, JSON.stringify(result, null, 2), 'utf-8')
-
-      // LRU cleanup: remove oldest entries when exceeding max
-      const files = readdirSync(historyDir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => join(historyDir, f))
-
-      if (files.length > MAX_HISTORY) {
-        const sorted = files
-          .map(f => {
-            try {
-              const data = JSON.parse(readFileSync(f, 'utf-8'))
-              return { path: f, time: new Date(data.createdAt || 0).getTime() }
-            } catch { return { path: f, time: 0 } }
-          })
-          .sort((a, b) => a.time - b.time)
-
-        for (const entry of sorted.slice(0, files.length - MAX_HISTORY)) {
-          try { unlinkSync(entry.path) } catch {}
-        }
-      }
+      await saveHistoryEntry(join(app.getPath('userData'), 'history'), result, MAX_HISTORY)
     } catch (e: unknown) {
       throw new Error(`保存结果失败: ${errorMessage(e)}`, { cause: e })
     }
