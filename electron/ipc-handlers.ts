@@ -7,6 +7,7 @@ import { errorMessage } from '../src/utils/error'
 import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
 import { registerMediaPath } from './media-access'
 import { saveHistoryEntry, loadHistoryEntries, deleteHistoryEntry } from './history-store'
+import { trackTempFile, releaseTempFile } from './temp-files'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -15,6 +16,7 @@ import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
 let lastConfig: InferenceConfig | null = null
+let currentTempWav: string | null = null
 const MAX_HISTORY = 100
 
 // ─── Shared helpers ────────────────────────────────────────
@@ -81,6 +83,13 @@ export function registerHandlers(win: BrowserWindow): void {
     // 预转为 16kHz WAV 以便后续推理
     const tempWav = join(tmpdir(), `lyrics-input-${randomUUID()}.wav`)
     await convertToWav(filePath, tempWav)
+    // 换新音频后上一个临时 WAV 不再被引用，立即释放
+    if (currentTempWav) {
+      releaseTempFile(currentTempWav)
+      originalFileNames.delete(currentTempWav)
+    }
+    currentTempWav = tempWav
+    trackTempFile(tempWav)
     info.filePath = tempWav // 后续推理使用转换后的 WAV
     originalFileNames.set(tempWav, originalFileName)
     // The player streams these over media://, so allow exactly them

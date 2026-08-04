@@ -2,6 +2,7 @@ import { app, BrowserWindow, protocol } from 'electron'
 import path from 'path'
 import { readFile, stat, open as fsOpen } from 'fs/promises'
 import { isMediaPathAllowed } from './media-access'
+import { cleanupTempFiles } from './temp-files'
 
 // 注册自定义协议用于播放本地音频（renderer 沙箱不能直接访问 file://）
 protocol.registerSchemesAsPrivileged([
@@ -102,6 +103,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  cleanupTempFiles()
 })
 
 app.on('activate', () => {
