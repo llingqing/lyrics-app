@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   listModels: () => ipcRenderer.invoke('model:list') as Promise<Record<string, boolean>>,
   downloadModel: (modelName: string) => ipcRenderer.invoke('model:download', modelName) as Promise<string>,
+  cancelModelDownload: (modelName: string) => ipcRenderer.invoke('model:download-cancel', modelName),
   onModelDownloadProgress: (callback: ModelDownloadCallback) => {
     const handler = (_event: IpcRendererEvent, p: { modelName: string; percent: number }) => callback(p)
     ipcRenderer.on('model:download-progress', handler)

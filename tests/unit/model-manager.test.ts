@@ -1,7 +1,8 @@
 // @vitest-environment node
 // 主进程模块：在 node 环境测（undici 的 FormData/Blob/File 行为与 Electron 主进程一致）
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdtemp, rm, writeFile, readFile } from 'fs/promises'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -15,7 +16,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs } from '../../electron/model-manager'
+import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs, cancelDownload, getModelPath } from '../../electron/model-manager'
 import { InferenceConfig } from '../../src/types'
 
 const fetchMock = vi.fn()
@@ -244,11 +245,107 @@ describe('downloadModel', () => {
     await expect(downloadModel('large-v3-turbo')).rejects.toThrow('HTTP 404')
     expect(fetchMock).toHaveBeenCalledWith(
       'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
+      expect.anything(),
     )
 
     await expect(downloadModel('large-v3')).rejects.toThrow('HTTP 404')
     expect(fetchMock).toHaveBeenCalledWith(
       'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
+      expect.anything(),
     )
+  })
+
+  function bodyStream(...chunks: string[]) {
+    return new ReadableStream({
+      start(controller) {
+        for (const c of chunks) controller.enqueue(new TextEncoder().encode(c))
+        controller.close()
+      },
+    })
+  }
+
+  function downloadResponse(body: string, { status = 200 }: { status?: number } = {}) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      headers: new Headers({ 'content-length': String(body.length) }),
+      body: bodyStream(body),
+    }
+  }
+
+  it('resumes a partial download with a Range request and appends to the temp file', async () => {
+    const tempPath = getModelPath('tiny') + '.download'
+    await writeFile(tempPath, 'hello')
+    fetchMock.mockResolvedValue(downloadResponse(' world', { status: 206 }))
+    const onProgress = vi.fn()
+
+    const dest = await downloadModel('tiny', onProgress)
+
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ Range: 'bytes=5-' })
+    expect(await readFile(dest, 'utf-8')).toBe('hello world')
+    expect(existsSync(tempPath)).toBe(false)
+    expect(onProgress.mock.calls.at(-1)?.[0].percent).toBe(100)
+  })
+
+  it('restarts from scratch when the server ignores the range', async () => {
+    const tempPath = getModelPath('tiny') + '.download'
+    await writeFile(tempPath, 'stale-junk')
+    fetchMock.mockResolvedValue(downloadResponse('fresh-data', { status: 200 }))
+
+    const dest = await downloadModel('tiny')
+
+    expect(await readFile(dest, 'utf-8')).toBe('fresh-data')
+  })
+
+  it('rejects an incomplete download and keeps the temp file for resuming', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-length': '100' }),
+      body: bodyStream('short'),
+    })
+
+    await expect(downloadModel('tiny')).rejects.toThrow('不完整')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(existsSync(getModelPath('tiny'))).toBe(false)
+    expect(await readFile(getModelPath('tiny') + '.download', 'utf-8')).toBe('short')
+  })
+
+  it('retries transient network errors', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockImplementation(() => Promise.resolve(downloadResponse('model-data')))
+
+    const dest = await downloadModel('tiny')
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(await readFile(dest, 'utf-8')).toBe('model-data')
+  }, 10000)
+
+  it('cancelDownload aborts an in-flight download without retrying', async () => {
+    let fetchStarted!: () => void
+    const fetchStartedPromise = new Promise<void>(resolve => { fetchStarted = resolve })
+    fetchMock.mockImplementation(() => {
+      fetchStarted()
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-length': '1000' }),
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('partial'))
+            // never closes — simulates a stalled connection
+          },
+        }),
+      })
+    })
+
+    const promise = downloadModel('tiny')
+    await fetchStartedPromise
+    cancelDownload('tiny')
+
+    await expect(promise).rejects.toThrow('取消')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(existsSync(getModelPath('tiny'))).toBe(false)
   })
 })

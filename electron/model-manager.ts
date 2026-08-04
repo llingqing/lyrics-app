@@ -30,6 +30,8 @@ function sleep(ms: number): Promise<void> {
 interface RetryOptions {
   maxRetries: number
   baseDelayMs: number
+  isCancelled?: () => boolean   // 默认查推理取消标记；下载传自己的 abort 状态
+  cancelMessage?: string
 }
 
 // Shape of the OpenAI Whisper transcription response (verbose_json)
@@ -69,10 +71,12 @@ async function retryWithBackoff<T>(
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 2
   const baseDelayMs = options.baseDelayMs ?? 1000
+  const isCancelled = options.isCancelled ?? (() => cancelled)
+  const cancelMessage = options.cancelMessage ?? '推理已被取消'
   let lastError: unknown
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (cancelled) throw new Error('推理已被取消')
+    if (isCancelled()) throw new Error(cancelMessage)
     try {
       return await fn()
     } catch (e: unknown) {
@@ -100,6 +104,12 @@ export function getModelPath(modelName: string): string {
   return join(getModelsDir(), `ggml-${modelName}.bin`)
 }
 
+const downloadAborts = new Map<string, AbortController>()
+
+export function cancelDownload(modelName: string): void {
+  downloadAborts.get(modelName)?.abort()
+}
+
 export async function downloadModel(
   modelName: string,
   onProgress?: (p: { percent: number }) => void,
@@ -110,18 +120,65 @@ export async function downloadModel(
   const destPath = getModelPath(modelName)
   if (existsSync(destPath)) return destPath
 
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`模型下载失败: HTTP ${response.status}`)
-  if (!response.body) throw new Error('模型下载失败: 响应体为空')
-  const total = parseInt(response.headers.get('content-length') || '0', 10)
-  let downloaded = 0
+  const abort = new AbortController()
+  downloadAborts.set(modelName, abort)
+  try {
+    return await retryWithBackoff(
+      () => downloadAttempt(url, destPath, abort.signal, onProgress),
+      (err) => {
+        const msg = errorMessage(err)
+        // 取消、尺寸不符（留给下次续传）、客户端错误（404 等）不重试；网络错误重试
+        return !msg.includes('取消') && !msg.includes('不完整') && !/HTTP 4\d\d/.test(msg)
+      },
+      { maxRetries: 2, baseDelayMs: 1000, isCancelled: () => abort.signal.aborted, cancelMessage: '下载已取消' },
+    )
+  } finally {
+    downloadAborts.delete(modelName)
+  }
+}
 
+async function downloadAttempt(
+  url: string,
+  destPath: string,
+  signal: AbortSignal,
+  onProgress?: (p: { percent: number }) => void,
+): Promise<string> {
   const tempPath = destPath + '.download'
-  const writer = createWriteStream(tempPath)
+  const resumeFrom = existsSync(tempPath) ? statSync(tempPath).size : 0
 
-  // Convert EventEmitter error into a rejectable promise to avoid uncaught throws
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {},
+      signal,
+    })
+  } catch (e: unknown) {
+    if (signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) {
+      throw new Error('下载已取消', { cause: e })
+    }
+    throw e
+  }
+
+  if (!response.ok && response.status !== 206) throw new Error(`模型下载失败: HTTP ${response.status}`)
+  if (!response.body) throw new Error('模型下载失败: 响应体为空')
+
+  // 206 表示服务端接受了 Range，从断点续传；200 表示从头重发，丢弃已有部分
+  const resumed = response.status === 206
+  const existing = resumed ? resumeFrom : 0
+  const contentLength = parseInt(response.headers.get('content-length') || '0', 10)
+  const total = contentLength > 0 ? existing + contentLength : 0
+  let downloaded = existing
+
+  const writer = createWriteStream(tempPath, resumed ? { flags: 'a' } : undefined)
   const writeErrorPromise = new Promise<never>((_, reject) => {
     writer.on('error', (err) => reject(new Error(`模型写入失败: ${err.message}`)))
+  })
+  // fetch 的 mock/实现未必响应 signal，读取循环也要能被中断；
+  // abort 可能发生在监听注册之前（事件不补发），必须先查 aborted
+  const abortPromise = new Promise<never>((_, reject) => {
+    const fail = () => reject(new Error('下载已取消'))
+    if (signal.aborted) return fail()
+    signal.addEventListener('abort', fail, { once: true })
   })
 
   const reader = response.body.getReader()
@@ -135,9 +192,23 @@ export async function downloadModel(
         onProgress({ percent: Math.round((downloaded / total) * 100) })
       }
     }
-    writer.end()
   }
-  await Promise.race([pump(), writeErrorPromise])
+
+  try {
+    await Promise.race([pump(), writeErrorPromise, abortPromise])
+  } catch (e) {
+    reader.cancel().catch(() => { /* best-effort */ })
+    writer.destroy() // 保留 tempPath，下次续传
+    throw e
+  }
+  await new Promise<void>((resolve, reject) => {
+    writer.end((err?: Error | null) => (err ? reject(err) : resolve()))
+  })
+
+  const finalSize = statSync(tempPath).size
+  if (total > 0 && finalSize !== total) {
+    throw new Error(`模型下载不完整（${finalSize}/${total} 字节），请重新下载以续传`)
+  }
 
   renameSync(tempPath, destPath)
   return destPath

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react'
 import ConfigPanel from '../../src/components/ConfigPanel'
 import AudioPlayer from '../../src/components/AudioPlayer'
+import ModelManager from '../../src/components/ModelManager'
 import TimelineView from '../../src/components/LyricsResult/TimelineView'
 import LyricsEditor from '../../src/components/LyricsResult/LyricsEditor'
 import { getMockElectronAPI } from '../setup'
@@ -139,6 +140,36 @@ describe('ConfigPanel', () => {
     expect(screen.getByDisplayValue('https://api.groq.com/openai/v1')).toBeDefined()
     expect(screen.getByDisplayValue('whisper-large-v3-turbo')).toBeDefined()
     expect((screen.getByPlaceholderText('sk-...') as HTMLInputElement).value).toBe('')
+  })
+})
+
+// ─── ModelManager ──────────────────────────────────────────
+
+describe('ModelManager', () => {
+  it('lets the user cancel an in-flight download without surfacing an error', async () => {
+    let rejectDownload!: (e: Error) => void
+    mockAPI.downloadModel.mockImplementation(
+      () => new Promise((_, reject) => { rejectDownload = reject }),
+    )
+
+    render(<ModelManager />)
+    await waitFor(() => {
+      expect(screen.getAllByText('下载').length).toBeGreaterThan(0)
+    })
+
+    // small 未下载，点它的下载按钮
+    fireEvent.click(screen.getAllByText('下载')[0])
+    const cancelButton = await screen.findByLabelText('取消下载')
+    fireEvent.click(cancelButton)
+
+    expect(mockAPI.cancelModelDownload).toHaveBeenCalledWith('small')
+
+    // 主进程以「下载已取消」拒绝——不该显示成下载失败
+    await act(async () => {
+      rejectDownload(new Error("Error invoking remote method 'model:download': 下载已取消"))
+    })
+    expect(screen.queryByText(/下载.*失败/)).toBeNull()
+    expect(screen.getAllByText('下载').length).toBeGreaterThan(0)
   })
 })
 

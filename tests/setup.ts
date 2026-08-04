@@ -39,6 +39,7 @@ export function getMockElectronAPI() {
     onInferenceError: vi.fn().mockReturnValue(() => {}),
     listModels: vi.fn().mockResolvedValue({ tiny: true, base: true, small: false, medium: false }),
     downloadModel: vi.fn(),
+    cancelModelDownload: vi.fn(),
     onModelDownloadProgress: vi.fn().mockReturnValue(() => {}),
   }
 }

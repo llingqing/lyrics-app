@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { loadAudioInfo, convertToWav } from './audio-manager'
-import { runLocalInference, runCloudInference, cancelInference, downloadModel, getModelPath } from './model-manager'
+import { runLocalInference, runCloudInference, cancelInference, downloadModel, getModelPath, cancelDownload } from './model-manager'
 import { showExportDialog } from './export-manager'
 import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
 import { errorMessage } from '../src/utils/error'
@@ -162,5 +162,9 @@ export function registerHandlers(win: BrowserWindow): void {
     } catch (e: unknown) {
       throw new Error(`模型下载失败: ${errorMessage(e)}`, { cause: e })
     }
+  })
+
+  ipcMain.handle('model:download-cancel', async (_event, modelName: string) => {
+    cancelDownload(modelName)
   })
 }

@@ -2,7 +2,7 @@ import { useModels } from '../hooks/useModels'
 import { LOCAL_MODELS } from '../config/models'
 
 export default function ModelManager() {
-  const { available, downloading, download, error } = useModels()
+  const { available, downloading, download, cancelDownload, error } = useModels()
 
   return (
     <div className="max-w-lg mx-auto mt-8">
@@ -33,7 +33,16 @@ export default function ModelManager() {
                 {isDownloaded ? (
                   <span className="inline-block mt-2 text-xs text-green-400">✓ 已下载</span>
                 ) : isDownloading ? (
-                  <span className="inline-block mt-2 text-xs text-blue-400">{dlPercent}%</span>
+                  <span className="inline-flex items-center gap-2 mt-2 text-xs text-blue-400">
+                    {dlPercent}%
+                    <button
+                      aria-label="取消下载"
+                      onClick={() => cancelDownload(m.value)}
+                      className="text-gray-500 hover:text-red-400 transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </span>
                 ) : (
                   <button
                     onClick={() => download(m.value)}

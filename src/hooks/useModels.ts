@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { errorMessage } from '../utils/error'
 
 export function useModels() {
   const [available, setAvailable] = useState<Record<string, boolean>>({})
@@ -23,15 +24,22 @@ export function useModels() {
     setError(null)
     try {
       await window.electronAPI.downloadModel(modelName)
-    } catch {
+    } catch (e: unknown) {
       setDownloading(prev => {
         const next = { ...prev }
         delete next[modelName]
         return next
       })
-      setError(`下载 ${modelName} 模型失败，请检查网络连接`)
+      // 用户主动取消不算失败
+      if (!errorMessage(e).includes('取消')) {
+        setError(`下载 ${modelName} 模型失败，请检查网络连接`)
+      }
     }
   }, [])
 
-  return { available, downloading, download, error }
+  const cancelDownload = useCallback(async (modelName: string) => {
+    await window.electronAPI.cancelModelDownload(modelName)
+  }, [])
+
+  return { available, downloading, download, cancelDownload, error }
 }
