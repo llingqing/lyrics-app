@@ -15,7 +15,6 @@ import { existsSync } from 'fs'
 import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
-let lastConfig: InferenceConfig | null = null
 let currentTempWav: string | null = null
 const MAX_HISTORY = 100
 
@@ -103,7 +102,6 @@ export function registerHandlers(win: BrowserWindow): void {
     const configError = validateInferenceConfig(config)
     if (configError) throw new Error(configError)
 
-    lastConfig = config
     try {
       await executeInference(config, win)
     } catch (e: unknown) {
@@ -113,15 +111,6 @@ export function registerHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('inference:cancel', async () => {
     cancelInference()
-  })
-
-  ipcMain.handle('inference:retry', async () => {
-    if (!lastConfig) throw new Error('没有可用的重试配置')
-    try {
-      await executeInference(lastConfig, win)
-    } catch (e: unknown) {
-      win.webContents.send('inference:error', { message: errorMessage(e), code: errorCode(e) })
-    }
   })
 
   ipcMain.handle('lyrics:save', async (_event, result: TranscriptionResult) => {
