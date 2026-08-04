@@ -289,12 +289,8 @@ export async function runCloudInference(
   }
 
   async function callApi(): Promise<{ segments: LyricSegment[]; language: string }> {
-    // Phase 1: preparing to upload
-    onProgress({ percent: 0, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
-    await sleep(300)
-
-    onProgress({ percent: 5, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
-
+    // 等待期间不发进度——fetch 拿不到真实上传/转写进度，渲染端用虚拟进度动画；
+    // 这里发假的中间值反而会打断它（见 useInference 的虚拟计时器）
     let response: Response
     try {
       response = await fetch(`${baseUrl}/audio/transcriptions`, {
@@ -305,7 +301,7 @@ export async function runCloudInference(
       })
     } catch (e: unknown) {
       if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) {
-        throw new Error('推理已被取消')
+        throw new Error('推理已被取消', { cause: e })
       }
       throw e
     }
@@ -316,8 +312,6 @@ export async function runCloudInference(
       if (response.status === 429) throw new Error('API 请求过于频繁，请稍后重试')
       throw new Error(`API 错误 (${response.status}): ${errText}`)
     }
-
-    onProgress({ percent: 85, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
     const data = await response.json() as WhisperApiResponse
     const segments: LyricSegment[] = (data.segments || []).map((s, i) => ({

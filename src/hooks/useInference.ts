@@ -9,13 +9,17 @@ export function useInference(config: InferenceConfig | null) {
   const [isRunning, setIsRunning] = useState(false)
   const virtualTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const stopVirtualTimer = useCallback(() => {
+    if (virtualTimerRef.current) {
+      clearInterval(virtualTimerRef.current)
+      virtualTimerRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     const unsubProgress = window.electronAPI.onInferenceProgress((p) => {
       setProgress(p)
-      if (virtualTimerRef.current) {
-        clearInterval(virtualTimerRef.current)
-        virtualTimerRef.current = null
-      }
+      stopVirtualTimer()
     })
     const unsubResult = window.electronAPI.onInferenceResult((r) => {
       setResult(r)
@@ -24,6 +28,7 @@ export function useInference(config: InferenceConfig | null) {
     const unsubError = window.electronAPI.onInferenceError((e) => {
       setError(e.message)
       setIsRunning(false)
+      stopVirtualTimer()
     })
 
     return () => {
@@ -31,7 +36,7 @@ export function useInference(config: InferenceConfig | null) {
       unsubResult()
       unsubError()
     }
-  }, [])
+  }, [stopVirtualTimer])
 
   const start = useCallback(async () => {
     if (!config) return
@@ -61,32 +66,23 @@ export function useInference(config: InferenceConfig | null) {
     } catch (e: unknown) {
       setError(errorMessage(e))
       setIsRunning(false)
-      if (virtualTimerRef.current) {
-        clearInterval(virtualTimerRef.current)
-        virtualTimerRef.current = null
-      }
+      stopVirtualTimer()
     }
-  }, [config])
+  }, [config, stopVirtualTimer])
 
   const cancel = useCallback(async () => {
     await window.electronAPI.cancelInference()
     setIsRunning(false)
-    if (virtualTimerRef.current) {
-      clearInterval(virtualTimerRef.current)
-      virtualTimerRef.current = null
-    }
-  }, [])
+    stopVirtualTimer()
+  }, [stopVirtualTimer])
 
   const reset = useCallback(() => {
     setProgress(null)
     setResult(null)
     setError(null)
     setIsRunning(false)
-    if (virtualTimerRef.current) {
-      clearInterval(virtualTimerRef.current)
-      virtualTimerRef.current = null
-    }
-  }, [])
+    stopVirtualTimer()
+  }, [stopVirtualTimer])
 
   return { progress, result, error, isRunning, start, cancel, reset }
 }

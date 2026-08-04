@@ -86,6 +86,16 @@ describe('runCloudInference', () => {
     expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions')
     expect((options.body as FormData).get('model')).toBe('whisper-large-v3-turbo')
   })
+
+  it('emits only a completion progress event (the renderer owns the waiting animation)', async () => {
+    fetchMock.mockResolvedValue(apiResponse())
+    const filePath = await makeAudioFile()
+    const onProgress = vi.fn()
+
+    await runCloudInference(cloudConfig({ filePath }), onProgress)
+
+    expect(onProgress.mock.calls.map(([p]) => p.percent)).toEqual([100])
+  })
 })
 
 describe('cancelInference (cloud)', () => {
