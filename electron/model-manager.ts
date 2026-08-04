@@ -18,6 +18,7 @@ const MODEL_URLS: Record<string, string> = {
 }
 
 let currentProcess: ChildProcess | null = null
+let cloudAbort: AbortController | null = null
 let cancelled = false
 
 // ─── Retry helpers ─────────────────────────────────────────
@@ -134,6 +135,10 @@ export async function ensureModel(modelName: string): Promise<string> {
 
 export function cancelInference(): void {
   cancelled = true
+  if (cloudAbort) {
+    cloudAbort.abort()
+    cloudAbort = null
+  }
   if (currentProcess) {
     try {
       currentProcess.kill('SIGTERM')
@@ -266,6 +271,8 @@ export async function runCloudInference(
   }
 
   cancelled = false
+  cloudAbort = new AbortController()
+  const signal = cloudAbort.signal
 
   // OpenAI 兼容协议：第三方服务只需换 baseUrl 和模型名
   const baseUrl = (config.cloudBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
@@ -288,11 +295,20 @@ export async function runCloudInference(
 
     onProgress({ percent: 5, currentSegment: 0, totalSegments: 0, partialText: '', engine: 'cloud' })
 
-    const response = await fetch(`${baseUrl}/audio/transcriptions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${config.cloudApiKey}` },
-      body: formData,
-    })
+    let response: Response
+    try {
+      response = await fetch(`${baseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.cloudApiKey}` },
+        body: formData,
+        signal,
+      })
+    } catch (e: unknown) {
+      if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) {
+        throw new Error('推理已被取消')
+      }
+      throw e
+    }
 
     if (!response.ok) {
       const errText = await response.text()

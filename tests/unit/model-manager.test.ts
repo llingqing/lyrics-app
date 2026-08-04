@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { runCloudInference, downloadModel } from '../../electron/model-manager'
+import { runCloudInference, downloadModel, cancelInference } from '../../electron/model-manager'
 import { InferenceConfig } from '../../src/types'
 
 const fetchMock = vi.fn()
@@ -85,6 +85,31 @@ describe('runCloudInference', () => {
     const [url, options] = fetchMock.mock.calls[0]
     expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions')
     expect((options.body as FormData).get('model')).toBe('whisper-large-v3-turbo')
+  })
+})
+
+describe('cancelInference (cloud)', () => {
+  it('aborts the in-flight request and rejects with a cancel error, without retrying', async () => {
+    const filePath = await makeAudioFile()
+
+    let fetchStarted!: () => void
+    const fetchStartedPromise = new Promise<void>(resolve => { fetchStarted = resolve })
+
+    fetchMock.mockImplementation((_url: string, options: { signal?: AbortSignal }) => {
+      fetchStarted()
+      return new Promise((_resolve, reject) => {
+        const abort = () => reject(new DOMException('The operation was aborted', 'AbortError'))
+        if (options.signal?.aborted) return abort()
+        options.signal?.addEventListener('abort', abort)
+      })
+    })
+
+    const promise = runCloudInference(cloudConfig({ filePath }), vi.fn())
+    await fetchStartedPromise
+    cancelInference()
+
+    await expect(promise).rejects.toThrow('取消')
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 })
 
