@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   selectAudio: () => ipcRenderer.invoke('audio:select') as Promise<string | null>,
   loadAudio: (filePath: string) => ipcRenderer.invoke('audio:load', filePath),
+  restoreAudio: (filePath: string) => ipcRenderer.invoke('audio:restore', filePath),
   startInference: (config: InferenceConfig) => ipcRenderer.invoke('inference:start', config),
   cancelInference: () => ipcRenderer.invoke('inference:cancel'),
   saveResult: (result: TranscriptionResult) => ipcRenderer.invoke('lyrics:save', result),

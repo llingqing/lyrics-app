@@ -42,6 +42,7 @@ async function executeInference(
   const result: TranscriptionResult = {
     id: randomUUID(),
     audioFileName: originalFileNames.get(config.filePath) || config.filePath,
+    audioPath: config.originalPath, // 存原始路径，之后从历史恢复播放
     // 云端记录实际调用的 API 模型名，而不是本地模型选项
     modelName: config.engine === 'cloud' ? config.cloudModel || 'whisper-1' : config.modelName,
     engine: config.engine,
@@ -95,6 +96,21 @@ export function registerHandlers(win: BrowserWindow): void {
     registerMediaPath(tempWav)
     win.webContents.send('audio:info', info)
     return info
+  })
+
+  // 从历史记录恢复播放：文件还在就重新授权 media:// 并返回信息，不做 WAV 预转
+  ipcMain.handle('audio:restore', async (_event, filePath: string) => {
+    const pathError = validateFilePath(filePath)
+    if (pathError) throw new Error(pathError)
+
+    try {
+      const info = await loadAudioInfo(filePath)
+      info.originalPath = filePath
+      registerMediaPath(filePath)
+      return info
+    } catch {
+      return null // 文件已删除/损坏，历史仍可查看但无播放器
+    }
   })
 
   ipcMain.handle('inference:start', async (_event, config: InferenceConfig) => {

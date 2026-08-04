@@ -28,6 +28,7 @@ export function getMockElectronAPI() {
     platform: 'linux',
     selectAudio: vi.fn(),
     loadAudio: vi.fn(),
+    restoreAudio: vi.fn().mockResolvedValue(null),
     startInference: vi.fn(),
     cancelInference: vi.fn(),
     saveResult: vi.fn(),

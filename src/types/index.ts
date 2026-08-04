@@ -20,6 +20,7 @@ export interface LyricSegment {
 export interface TranscriptionResult {
   id: string
   audioFileName: string
+  audioPath?: string    // 原始音频路径；文件还在时选中历史可恢复播放
   modelName: string
   engine: 'local' | 'cloud'
   language: string
@@ -69,6 +70,7 @@ export interface ElectronAPI {
   platform: string
   selectAudio: () => Promise<string | null>
   loadAudio: (filePath: string) => Promise<AudioInfo>
+  restoreAudio: (filePath: string) => Promise<AudioInfo | null>
   startInference: (config: InferenceConfig) => Promise<void>
   cancelInference: () => Promise<void>
   saveResult: (result: TranscriptionResult) => Promise<void>

@@ -93,13 +93,26 @@ export default function App() {
     setStep('config')
   }, [])
 
+  // 选择历史时的恢复请求序号：快速连续切换只让最后一次的结果生效
+  const restoreSeqRef = useRef(0)
   const handleHistorySelect = useCallback(
-    (historyResult: TranscriptionResult) => {
+    async (historyResult: TranscriptionResult) => {
       flushPendingSave() // 上一条的待写编辑先落盘再切换
       setSegments(historyResult.segments)
       setDisplayedResult(historyResult)
-      setAudioInfo(null) // 历史记录未存音频路径，清掉播放器避免配上别的文件的音频
+      setAudioInfo(null) // 先清掉，避免短暂配上上一个文件的播放器
       setStep('result')
+
+      // 历史存了原始音频路径且文件还在 → 恢复播放器
+      if (historyResult.audioPath) {
+        const seq = ++restoreSeqRef.current
+        try {
+          const restored = await window.electronAPI.restoreAudio(historyResult.audioPath)
+          if (restoreSeqRef.current === seq && restored) setAudioInfo(restored)
+        } catch {
+          // 恢复失败就保持无播放器状态
+        }
+      }
     },
     [flushPendingSave],
   )
