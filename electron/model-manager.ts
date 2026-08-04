@@ -17,9 +17,41 @@ const MODEL_URLS: Record<string, string> = {
   'large-v3': 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
 }
 
-let currentProcess: ChildProcess | null = null
-let cloudAbort: AbortController | null = null
-let cancelled = false
+// 每次推理一个运行上下文；开新任务自动取消旧的，避免共享标记互相干扰
+interface RunContext {
+  cancelled: boolean
+  process: ChildProcess | null
+  abort: AbortController | null
+}
+
+let activeRun: RunContext | null = null
+
+function beginRun(): RunContext {
+  if (activeRun) cancelRun(activeRun)
+  const run: RunContext = { cancelled: false, process: null, abort: null }
+  activeRun = run
+  return run
+}
+
+function cancelRun(run: RunContext): void {
+  run.cancelled = true
+  if (run.abort) {
+    run.abort.abort()
+    run.abort = null
+  }
+  if (run.process) {
+    try {
+      run.process.kill('SIGTERM')
+    } catch {
+      // process may have already exited
+    }
+    run.process = null
+  }
+}
+
+export function cancelInference(): void {
+  if (activeRun) cancelRun(activeRun)
+}
 
 // ─── Retry helpers ─────────────────────────────────────────
 
@@ -30,7 +62,7 @@ function sleep(ms: number): Promise<void> {
 interface RetryOptions {
   maxRetries: number
   baseDelayMs: number
-  isCancelled?: () => boolean   // 默认查推理取消标记；下载传自己的 abort 状态
+  isCancelled?: () => boolean   // 推理传运行上下文的标记，下载传自己的 abort 状态
   cancelMessage?: string
 }
 
@@ -71,7 +103,7 @@ async function retryWithBackoff<T>(
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 2
   const baseDelayMs = options.baseDelayMs ?? 1000
-  const isCancelled = options.isCancelled ?? (() => cancelled)
+  const isCancelled = options.isCancelled ?? (() => false)
   const cancelMessage = options.cancelMessage ?? '推理已被取消'
   let lastError: unknown
 
@@ -221,22 +253,6 @@ export async function ensureModel(modelName: string): Promise<string> {
   return getModelPath(modelName)
 }
 
-export function cancelInference(): void {
-  cancelled = true
-  if (cloudAbort) {
-    cloudAbort.abort()
-    cloudAbort = null
-  }
-  if (currentProcess) {
-    try {
-      currentProcess.kill('SIGTERM')
-    } catch {
-      // process may have already exited
-    }
-    currentProcess = null
-  }
-}
-
 export function buildWhisperArgs(
   config: InferenceConfig,
   modelPath: string,
@@ -257,7 +273,7 @@ export async function runLocalInference(
   config: InferenceConfig,
   onProgress: (p: InferenceProgress) => void,
 ): Promise<{ segments: LyricSegment[]; language: string }> {
-  cancelled = false
+  const run = beginRun()
 
   // 检查文件是否存在
   if (!existsSync(config.filePath)) {
@@ -280,14 +296,15 @@ export async function runLocalInference(
 
   async function spawnInference(): Promise<{ segments: LyricSegment[]; language: string }> {
     return new Promise((resolve, reject) => {
-      currentProcess = spawn(whisperPath, args, {
+      const child = spawn(whisperPath, args, {
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, LD_LIBRARY_PATH: resourcesDir },
       })
+      run.process = child
 
       let stderr = ''
 
-      currentProcess.stderr?.on('data', (data: Buffer) => {
+      child.stderr?.on('data', (data: Buffer) => {
         stderr += data.toString()
         const match = data.toString().match(/progress\s*=\s*(\d+)%/)
         if (match) {
@@ -301,9 +318,9 @@ export async function runLocalInference(
         }
       })
 
-      currentProcess.on('close', (code) => {
-        currentProcess = null
-        if (cancelled) {
+      child.on('close', (code) => {
+        if (run.process === child) run.process = null
+        if (run.cancelled) {
           cleanup(jsonPath)
           return reject(new Error('推理已被取消'))
         }
@@ -329,8 +346,8 @@ export async function runLocalInference(
         }
       })
 
-      currentProcess.on('error', (err) => {
-        currentProcess = null
+      child.on('error', (err) => {
+        if (run.process === child) run.process = null
         cleanup(jsonPath)
         reject(new Error(`whisper.cpp 进程启动失败: ${err.message}。请确认已下载 whisper 可执行文件到 resources/ 目录。`))
       })
@@ -342,7 +359,12 @@ export async function runLocalInference(
     return !msg.includes('文件不存在') && !msg.includes('模型加载失败') && !msg.includes('取消')
   }
 
-  return retryWithBackoff(spawnInference, isRetryableLocal, { maxRetries: 2, baseDelayMs: 1000 })
+  return retryWithBackoff(spawnInference, isRetryableLocal, {
+    maxRetries: 2,
+    baseDelayMs: 1000,
+    isCancelled: () => run.cancelled,
+    cancelMessage: '推理已被取消',
+  })
 }
 
 function cleanup(outputFile?: string) {
@@ -366,9 +388,9 @@ export async function runCloudInference(
     throw new Error('请先设置云端 API Key')
   }
 
-  cancelled = false
-  cloudAbort = new AbortController()
-  const signal = cloudAbort.signal
+  const run = beginRun()
+  run.abort = new AbortController()
+  const signal = run.abort.signal
 
   // OpenAI 兼容协议：第三方服务只需换 baseUrl 和模型名
   const baseUrl = (config.cloudBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
@@ -410,7 +432,7 @@ export async function runCloudInference(
         signal,
       })
     } catch (e: unknown) {
-      if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) {
+      if (run.cancelled || (e instanceof DOMException && e.name === 'AbortError')) {
         throw new Error('推理已被取消', { cause: e })
       }
       throw e
@@ -442,7 +464,12 @@ export async function runCloudInference(
     return !msg.includes('API Key 无效') && !msg.includes('取消')
   }
 
-  return retryWithBackoff(callApi, isRetryableCloud, { maxRetries: 2, baseDelayMs: 1500 })
+  return retryWithBackoff(callApi, isRetryableCloud, {
+    maxRetries: 2,
+    baseDelayMs: 1500,
+    isCancelled: () => run.cancelled,
+    cancelMessage: '推理已被取消',
+  })
 }
 
 // whisper.cpp full JSON 里的特殊标记 token（[_BEG_]、[_TT_150] 等），不计入置信度

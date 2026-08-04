@@ -79,6 +79,7 @@ export default function App() {
   )
 
   const handleBackToUpload = useCallback(() => {
+    if (isRunning) cancel() // 推理还在跑就先取消，防止过后结果事件把界面拽回结果页
     flushPendingSave()
     setStep('upload')
     setAudioInfo(null)
@@ -86,7 +87,7 @@ export default function App() {
     setSegments([])
     setDisplayedResult(null)
     reset()
-  }, [reset, flushPendingSave])
+  }, [reset, flushPendingSave, isRunning, cancel])
 
   const handleBackToConfig = useCallback(() => {
     setStep('config')

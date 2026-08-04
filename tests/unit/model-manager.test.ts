@@ -161,6 +161,30 @@ describe('cancelInference (cloud)', () => {
     await expect(promise).rejects.toThrow('取消')
     expect(fetchMock).toHaveBeenCalledOnce()
   })
+
+  it('starting a new run cancels the previous one', async () => {
+    const filePath = await makeAudioFile()
+
+    let firstStarted!: () => void
+    const firstStartedPromise = new Promise<void>(resolve => { firstStarted = resolve })
+    fetchMock.mockImplementationOnce((_url: string, options: { signal?: AbortSignal }) => {
+      firstStarted()
+      return new Promise((_resolve, reject) => {
+        const abort = () => reject(new DOMException('The operation was aborted', 'AbortError'))
+        if (options.signal?.aborted) return abort()
+        options.signal?.addEventListener('abort', abort)
+      })
+    })
+
+    const first = runCloudInference(cloudConfig({ filePath }), vi.fn())
+    await firstStartedPromise
+
+    fetchMock.mockResolvedValueOnce(apiResponse())
+    const second = runCloudInference(cloudConfig({ filePath }), vi.fn())
+
+    await expect(first).rejects.toThrow('取消')
+    expect((await second).segments).toHaveLength(1)
+  })
 })
 
 describe('parseWhisperJson', () => {
