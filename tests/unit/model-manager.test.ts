@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs, cancelDownload, getModelPath, deleteModel, getModelsStatus } from '../../electron/model-manager'
+import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs, cancelDownload, getModelPath, deleteModel, getModelsStatus, modelDownloadUrl } from '../../electron/model-manager'
 import { InferenceConfig } from '../../src/types'
 
 const fetchMock = vi.fn()
@@ -299,6 +299,19 @@ describe('getModelsStatus', () => {
   })
 })
 
+describe('modelDownloadUrl', () => {
+  it('builds the official URL by default and swaps the base for mirrors', () => {
+    expect(modelDownloadUrl('tiny')).toBe(
+      'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+    )
+    // 末尾斜杠应被规范化
+    expect(modelDownloadUrl('large-v3', 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/')).toBe(
+      'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
+    )
+    expect(() => modelDownloadUrl('nope')).toThrow('未知模型')
+  })
+})
+
 describe('downloadModel', () => {
   it('knows the download URLs for the large models', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 404 })
@@ -382,6 +395,21 @@ describe('downloadModel', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(await readFile(dest, 'utf-8')).toBe('model-data')
   }, 10000)
+
+  it('downloads from the configured base URL', async () => {
+    fetchMock.mockResolvedValue(downloadResponse('mirror-data'))
+
+    const dest = await downloadModel(
+      'tiny',
+      undefined,
+      'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main',
+    )
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+    )
+    expect(await readFile(dest, 'utf-8')).toBe('mirror-data')
+  })
 
   it('cancelDownload aborts an in-flight download without retrying', async () => {
     let fetchStarted!: () => void

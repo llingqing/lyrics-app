@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { useModels } from '../hooks/useModels'
-import { LOCAL_MODELS } from '../config/models'
+import {
+  LOCAL_MODELS,
+  DOWNLOAD_SOURCES,
+  loadDownloadSource,
+  saveDownloadSource,
+  DownloadSourceSettings,
+} from '../config/models'
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
@@ -11,6 +17,15 @@ export default function ModelManager() {
   const { available, sizes, downloading, download, cancelDownload, deleteModel, error } = useModels()
   // 与历史面板一致的两步确认；移开鼠标复位
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  // 下载源：预设 + 自定义目录，选择持久化（download 调用时从 localStorage 读取）
+  const [source, setSource] = useState<DownloadSourceSettings>(() => {
+    return loadDownloadSource() ?? { presetId: 'official', baseUrl: '' }
+  })
+
+  const applySource = (next: DownloadSourceSettings) => {
+    setSource(next)
+    saveDownloadSource(next)
+  }
 
   const totalBytes = Object.values(sizes).reduce((sum, n) => sum + n, 0)
 
@@ -23,6 +38,40 @@ export default function ModelManager() {
         )}
       </div>
       {error && <p className="text-sm text-red-400 mb-2">{error}</p>}
+
+      {/* 下载源选择：HuggingFace 官方 / hf-mirror 镜像 / 自定义目录 */}
+      <div className="flex items-center gap-2 mb-2 text-xs">
+        <span className="text-gray-600">下载源</span>
+        {DOWNLOAD_SOURCES.map(s => (
+          <button
+            key={s.id}
+            className={`py-0.5 px-2 rounded border transition-colors ${
+              source.presetId === s.id
+                ? 'border-blue-400 bg-blue-400/10 text-blue-400'
+                : 'border-gray-700 text-gray-500 hover:border-gray-500'
+            }`}
+            onClick={() =>
+              applySource({
+                presetId: s.id,
+                // 自定义保留已填的地址，预设直接覆盖
+                baseUrl: s.id === 'custom' ? source.baseUrl : s.baseUrl,
+              })
+            }
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      {source.presetId === 'custom' && (
+        <input
+          type="text"
+          value={source.baseUrl}
+          onChange={e => applySource({ presetId: 'custom', baseUrl: e.target.value })}
+          placeholder="https://…/whisper.cpp/resolve/main（目录内需有 ggml-*.bin）"
+          className="w-full mb-3 px-2 py-1 text-xs rounded border border-gray-700 bg-gray-800 text-gray-300 focus:outline-none focus:border-blue-400 placeholder-gray-600"
+        />
+      )}
+
       <div className="grid grid-cols-3 gap-2">
         {LOCAL_MODELS.map(m => {
           const isDownloaded = available[m.value]

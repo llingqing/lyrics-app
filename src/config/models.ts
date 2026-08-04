@@ -55,3 +55,42 @@ export function saveCloudSettings(settings: CloudSettings): void {
     // localStorage 不可用时静默跳过，只影响下次预填
   }
 }
+
+// ─── 模型下载源 ─────────────────────────────────────────────
+
+// 官方 HuggingFace / 国内镜像 / 自定义目录（目录内需有 ggml-<模型名>.bin）
+export interface DownloadSourcePreset {
+  id: string
+  label: string
+  baseUrl: string   // 空串 = 用主进程默认（官方源）
+}
+
+export const DOWNLOAD_SOURCES: DownloadSourcePreset[] = [
+  { id: 'official', label: '官方', baseUrl: '' },
+  { id: 'mirror', label: '镜像', baseUrl: 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main' },
+  { id: 'custom', label: '自定义', baseUrl: '' },
+]
+
+const DOWNLOAD_SOURCE_KEY = 'model-download-source'
+
+export interface DownloadSourceSettings {
+  presetId: string
+  baseUrl: string
+}
+
+export function loadDownloadSource(): DownloadSourceSettings | null {
+  try {
+    const raw = localStorage.getItem(DOWNLOAD_SOURCE_KEY)
+    return raw ? (JSON.parse(raw) as DownloadSourceSettings) : null
+  } catch {
+    return null
+  }
+}
+
+export function saveDownloadSource(settings: DownloadSourceSettings): void {
+  try {
+    localStorage.setItem(DOWNLOAD_SOURCE_KEY, JSON.stringify(settings))
+  } catch {
+    // localStorage 不可用时静默跳过，回落官方源
+  }
+}

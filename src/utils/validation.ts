@@ -43,6 +43,14 @@ export function validateInferenceConfig(config: unknown): string | null {
   return null
 }
 
+export function validateModelBaseUrl(baseUrl: unknown): string | null {
+  if (baseUrl === undefined) return null
+  if (typeof baseUrl !== 'string' || !/^https?:\/\//.test(baseUrl)) {
+    return 'baseUrl must be an http(s) URL'
+  }
+  return null
+}
+
 export function validateFilePath(path: unknown): string | null {
   if (!path) return 'Missing filePath'
   if (typeof path !== 'string') return 'filePath must be a string'

@@ -7,14 +7,23 @@ import { tmpdir } from 'os'
 import { InferenceConfig, InferenceProgress, LyricSegment, ModelStatus } from '../src/types'
 import { errorMessage } from '../src/utils/error'
 
-// whisper.cpp 的 GGML 模型下载地址
-const MODEL_URLS: Record<string, string> = {
-  tiny: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
-  base: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
-  small: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
-  medium: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin',
-  'large-v3-turbo': 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
-  'large-v3': 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
+// whisper.cpp 的 GGML 模型文件名；下载源 base 可换（官方/镜像/自定义）
+const DEFAULT_MODEL_BASE = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
+
+const MODEL_FILES: Record<string, string> = {
+  tiny: 'ggml-tiny.bin',
+  base: 'ggml-base.bin',
+  small: 'ggml-small.bin',
+  medium: 'ggml-medium.bin',
+  'large-v3-turbo': 'ggml-large-v3-turbo.bin',
+  'large-v3': 'ggml-large-v3.bin',
+}
+
+export function modelDownloadUrl(modelName: string, baseUrl?: string): string {
+  const file = MODEL_FILES[modelName]
+  if (!file) throw new Error(`未知模型: ${modelName}`)
+  const base = (baseUrl || DEFAULT_MODEL_BASE).replace(/\/+$/, '')
+  return `${base}/${file}`
 }
 
 // 每次推理一个运行上下文；开新任务自动取消旧的，避免共享标记互相干扰
@@ -148,7 +157,7 @@ export function deleteModel(modelName: string): void {
 
 export function getModelsStatus(): Record<string, ModelStatus> {
   const status: Record<string, ModelStatus> = {}
-  for (const name of Object.keys(MODEL_URLS)) {
+  for (const name of Object.keys(MODEL_FILES)) {
     const path = getModelPath(name)
     const downloaded = existsSync(path)
     status[name] = { downloaded, sizeBytes: downloaded ? statSync(path).size : 0 }
@@ -165,9 +174,9 @@ export function cancelDownload(modelName: string): void {
 export async function downloadModel(
   modelName: string,
   onProgress?: (p: { percent: number }) => void,
+  baseUrl?: string,
 ): Promise<string> {
-  const url = MODEL_URLS[modelName]
-  if (!url) throw new Error(`未知模型: ${modelName}`)
+  const url = modelDownloadUrl(modelName, baseUrl)
 
   const destPath = getModelPath(modelName)
   if (existsSync(destPath)) return destPath

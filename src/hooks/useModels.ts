@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { errorMessage } from '../utils/error'
 import { ModelStatus } from '../types'
+import { loadDownloadSource } from '../config/models'
 
 export function useModels() {
   const [available, setAvailable] = useState<Record<string, boolean>>({})
@@ -38,7 +39,9 @@ export function useModels() {
     setDownloading(prev => ({ ...prev, [modelName]: 0 }))
     setError(null)
     try {
-      await window.electronAPI.downloadModel(modelName)
+      // 调用时读当前下载源设置：模型管理面板改了源，这里（含配置页的下载按钮）立即生效
+      const baseUrl = loadDownloadSource()?.baseUrl || undefined
+      await window.electronAPI.downloadModel(modelName, baseUrl)
     } catch (e: unknown) {
       setDownloading(prev => {
         const next = { ...prev }

@@ -212,6 +212,47 @@ describe('ModelManager', () => {
       expect(screen.getAllByText('✓ 已下载')).toHaveLength(1)
     })
   })
+
+  const MIRROR_BASE = 'https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main'
+
+  it('downloads via the selected mirror source and remembers the choice', async () => {
+    mockAPI.downloadModel.mockResolvedValue('/models/ggml-small.bin')
+
+    const { unmount } = render(<ModelManager />)
+    await waitFor(() => {
+      expect(screen.getAllByText('下载').length).toBeGreaterThan(0)
+    })
+
+    fireEvent.click(screen.getByText('镜像'))
+    fireEvent.click(screen.getAllByText('下载')[0])
+    expect(mockAPI.downloadModel).toHaveBeenCalledWith('small', MIRROR_BASE)
+
+    // 重新打开面板仍是镜像源
+    unmount()
+    render(<ModelManager />)
+    await waitFor(() => {
+      expect(screen.getAllByText('下载').length).toBeGreaterThan(0)
+    })
+    fireEvent.click(screen.getAllByText('下载')[0])
+    expect(mockAPI.downloadModel).toHaveBeenLastCalledWith('small', MIRROR_BASE)
+  })
+
+  it('passes a custom download base through', async () => {
+    mockAPI.downloadModel.mockResolvedValue('/models/ggml-small.bin')
+
+    render(<ModelManager />)
+    await waitFor(() => {
+      expect(screen.getAllByText('下载').length).toBeGreaterThan(0)
+    })
+
+    fireEvent.click(screen.getByText('自定义'))
+    fireEvent.change(screen.getByPlaceholderText(/ggml/), {
+      target: { value: 'https://models.example.com/whisper' },
+    })
+    fireEvent.click(screen.getAllByText('下载')[0])
+
+    expect(mockAPI.downloadModel).toHaveBeenCalledWith('small', 'https://models.example.com/whisper')
+  })
 })
 
 // ─── AudioPlayer ───────────────────────────────────────────

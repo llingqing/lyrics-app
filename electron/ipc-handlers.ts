@@ -4,7 +4,7 @@ import { runLocalInference, runCloudInference, cancelInference, downloadModel, c
 import { showExportDialog } from './export-manager'
 import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
 import { errorMessage } from '../src/utils/error'
-import { validateInferenceConfig, validateFilePath } from '../src/utils/validation'
+import { validateInferenceConfig, validateFilePath, validateModelBaseUrl } from '../src/utils/validation'
 import { registerMediaPath } from './media-access'
 import { saveHistoryEntry, loadHistoryEntries, deleteHistoryEntry } from './history-store'
 import { trackTempFile, releaseTempFile } from './temp-files'
@@ -161,11 +161,14 @@ export function registerHandlers(win: BrowserWindow): void {
     return getModelsStatus()
   })
 
-  ipcMain.handle('model:download', async (_event, modelName: string) => {
+  ipcMain.handle('model:download', async (_event, modelName: string, baseUrl?: string) => {
+    const baseError = validateModelBaseUrl(baseUrl)
+    if (baseError) throw new Error(baseError)
+
     try {
       return await downloadModel(modelName, (p) => {
         win.webContents.send('model:download-progress', { modelName, percent: p.percent })
-      })
+      }, baseUrl)
     } catch (e: unknown) {
       throw new Error(`模型下载失败: ${errorMessage(e)}`, { cause: e })
     }

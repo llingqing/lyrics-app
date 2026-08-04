@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validateInferenceConfig, validateFilePath } from '../../src/utils/validation'
+import { validateInferenceConfig, validateFilePath, validateModelBaseUrl } from '../../src/utils/validation'
 
 // ─── InferenceConfig validation ────────────────────────────
 
@@ -101,6 +101,17 @@ describe('validateInferenceConfig', () => {
       .toBe('cloudApiKey is required when engine is "cloud"')
     expect(validateInferenceConfig({ ...validConfig, engine: 'cloud' as const, cloudApiKey: undefined }))
       .toBe('cloudApiKey is required when engine is "cloud"')
+  })
+})
+
+// ─── Model download base URL validation ────────────────────
+
+describe('validateModelBaseUrl', () => {
+  it('allows absent values and http(s) URLs, rejects everything else', () => {
+    expect(validateModelBaseUrl(undefined)).toBeNull()
+    expect(validateModelBaseUrl('https://hf-mirror.com/ggerganov/whisper.cpp/resolve/main')).toBeNull()
+    expect(validateModelBaseUrl('ftp://nope')).toBe('baseUrl must be an http(s) URL')
+    expect(validateModelBaseUrl(123)).toBe('baseUrl must be an http(s) URL')
   })
 })
 

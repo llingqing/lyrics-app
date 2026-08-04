@@ -42,7 +42,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   listModels: () => ipcRenderer.invoke('model:list') as Promise<Record<string, ModelStatus>>,
-  downloadModel: (modelName: string) => ipcRenderer.invoke('model:download', modelName) as Promise<string>,
+  downloadModel: (modelName: string, baseUrl?: string) =>
+    ipcRenderer.invoke('model:download', modelName, baseUrl) as Promise<string>,
   cancelModelDownload: (modelName: string) => ipcRenderer.invoke('model:download-cancel', modelName),
   deleteModel: (modelName: string) => ipcRenderer.invoke('model:delete', modelName),
   onModelDownloadProgress: (callback: ModelDownloadCallback) => {

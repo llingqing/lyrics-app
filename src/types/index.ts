@@ -82,7 +82,7 @@ export interface ElectronAPI {
   onInferenceResult: (callback: (result: TranscriptionResult) => void) => () => void
   onInferenceError: (callback: (error: { message: string; code: string }) => void) => () => void
   listModels: () => Promise<Record<string, ModelStatus>>
-  downloadModel: (modelName: string) => Promise<string>
+  downloadModel: (modelName: string, baseUrl?: string) => Promise<string>
   cancelModelDownload: (modelName: string) => Promise<void>
   deleteModel: (modelName: string) => Promise<void>
   onModelDownloadProgress: (callback: (p: { modelName: string; percent: number }) => void) => () => void
