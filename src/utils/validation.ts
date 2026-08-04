@@ -22,6 +22,10 @@ export function validateInferenceConfig(config: unknown): string | null {
     return 'Invalid language: must be one of auto, zh, en, ja, ko'
   }
 
+  if (c.useGpu !== undefined && typeof c.useGpu !== 'boolean') {
+    return 'useGpu must be a boolean'
+  }
+
   if (c.engine === 'cloud' && (!c.cloudApiKey || typeof c.cloudApiKey !== 'string' || !c.cloudApiKey.trim())) {
     return 'cloudApiKey is required when engine is "cloud"'
   }

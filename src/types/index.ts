@@ -41,6 +41,7 @@ export interface InferenceConfig {
   modelName: LocalModelName
   engine: 'local' | 'cloud'
   language: 'auto' | 'zh' | 'en' | 'ja' | 'ko'
+  useGpu?: boolean       // 本地引擎启用 GPU（默认关，预编译 whisper 可能没带 GPU 后端）
   cloudApiKey?: string
   cloudBaseUrl?: string  // OpenAI 兼容 API 根地址，默认 https://api.openai.com/v1
   cloudModel?: string    // API 模型名，默认 whisper-1

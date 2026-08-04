@@ -77,6 +77,19 @@ describe('ConfigPanel', () => {
     )
   })
 
+  it('passes GPU acceleration through when toggled', async () => {
+    const onStart = vi.fn()
+    render(<ConfigPanel audioInfo={audioInfo} onStart={onStart} onBack={vi.fn()} />)
+    await waitFor(() => {
+      expect(screen.getByText('开始识别')).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByLabelText('GPU 加速'))
+    fireEvent.click(screen.getByText('开始识别'))
+
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ useGpu: true }))
+  })
+
   it('offers the large local models', async () => {
     await act(async () => {
       render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)

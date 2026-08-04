@@ -260,6 +260,13 @@ describe('buildWhisperArgs', () => {
     expect(args).toContain('/models/ggml-base.bin')
     expect(args).toContain('/tmp/a.wav')
   })
+
+  it('disables GPU by default but honors useGpu', () => {
+    const base = { filePath: '/tmp/a.wav', modelName: 'base', engine: 'local', language: 'auto' } as const
+
+    expect(buildWhisperArgs({ ...base }, '/m.bin', '/tmp/out')).toContain('-ng')
+    expect(buildWhisperArgs({ ...base, useGpu: true }, '/m.bin', '/tmp/out')).not.toContain('-ng')
+  })
 })
 
 describe('deleteModel', () => {

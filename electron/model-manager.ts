@@ -278,15 +278,17 @@ export function buildWhisperArgs(
   modelPath: string,
   outputPath: string,
 ): string[] {
-  return [
+  const args = [
     '-m', modelPath,
     '-f', config.filePath,  // 已在 ipc-handlers 中预转为 16kHz mono wav
     '-ojf',  // full JSON：含真实检测语言与 token 概率（置信度来源）
     '-of', outputPath,
     '-l', config.language === 'auto' ? 'auto' : config.language,
     '--print-progress',
-    '-ng',  // disable GPU — pre-built binary may lack CUDA backend
   ]
+  // 默认禁用 GPU——预编译 whisper 二进制可能没带 CUDA 后端；用户显式开启才用
+  if (!config.useGpu) args.push('-ng')
+  return args
 }
 
 export async function runLocalInference(

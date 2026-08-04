@@ -55,6 +55,13 @@ describe('validateInferenceConfig', () => {
     })).toBe('cloudModel must be a non-empty string')
   })
 
+  it('accepts a boolean useGpu and rejects other types', () => {
+    expect(validateInferenceConfig({ ...validConfig, useGpu: true })).toBeNull()
+    expect(validateInferenceConfig({ ...validConfig, useGpu: false })).toBeNull()
+    expect(validateInferenceConfig({ ...validConfig, useGpu: 'yes' }))
+      .toBe('useGpu must be a boolean')
+  })
+
   it('rejects null/undefined config', () => {
     expect(validateInferenceConfig(null)).toBe('Missing inference config')
     expect(validateInferenceConfig(undefined)).toBe('Missing inference config')

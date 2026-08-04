@@ -26,6 +26,7 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
   const [modelName, setModelName] = useState<InferenceConfig['modelName']>('base')
   const [engine, setEngine] = useState<InferenceConfig['engine']>('local')
   const [language, setLanguage] = useState<InferenceConfig['language']>('auto')
+  const [useGpu, setUseGpu] = useState(false)
   const [apiKey, setApiKey] = useState('')
   // 云端服务商：预设 + 可编辑端点，上次的选择从 localStorage 预填（不含 key）
   const [cloudSettings, setCloudSettings] = useState(() => {
@@ -52,6 +53,7 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
       modelName,
       engine,
       language,
+      useGpu: engine === 'local' ? useGpu : undefined,
       cloudApiKey: engine === 'cloud' ? apiKey : undefined,
       cloudBaseUrl: engine === 'cloud' && cloudSettings.baseUrl ? cloudSettings.baseUrl : undefined,
       cloudModel: engine === 'cloud' && cloudSettings.model ? cloudSettings.model : undefined,
@@ -140,6 +142,18 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
               )
             })}
           </div>
+          <label className="flex items-center gap-2 mt-3 text-sm text-gray-400 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useGpu}
+              onChange={e => setUseGpu(e.target.checked)}
+              className="accent-blue-500"
+            />
+            GPU 加速
+          </label>
+          <p className="text-xs text-gray-600 mt-1">
+            需要 whisper 程序编译时带 GPU 后端；不确定就保持关闭（用 CPU）
+          </p>
         </div>
       )}
 
