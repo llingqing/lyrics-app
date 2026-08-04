@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { app } from 'electron'
-import { existsSync, mkdirSync, createWriteStream, readFileSync, renameSync, unlinkSync } from 'fs'
+import { existsSync, mkdirSync, createWriteStream, readFileSync, renameSync, unlinkSync, statSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
 import { InferenceConfig, InferenceProgress, LyricSegment } from '../src/types'
@@ -303,9 +303,23 @@ export async function runCloudInference(
   const baseUrl = (config.cloudBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')
   const apiModel = config.cloudModel || 'whisper-1'
 
+  // 优先上传用户打开的原始压缩文件（远小于预转的 16kHz WAV），带真实文件名便于服务端识别格式
+  const uploadPath =
+    typeof config.originalPath === 'string' && config.originalPath && existsSync(config.originalPath)
+      ? config.originalPath
+      : config.filePath
+
+  const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // OpenAI 兼容转写 API 的通行上限
+  const uploadSize = statSync(uploadPath).size
+  if (uploadSize > MAX_UPLOAD_BYTES) {
+    throw new Error(
+      `音频文件过大（${(uploadSize / 1024 / 1024).toFixed(1)} MB），云端 API 限制 25MB，请改用本地引擎或压缩音频`,
+    )
+  }
+
   const formData = new FormData()
-  const fileBuffer = readFileSync(config.filePath)
-  formData.append('file', new Blob([fileBuffer]), 'audio.wav')
+  const fileBuffer = readFileSync(uploadPath)
+  formData.append('file', new Blob([fileBuffer]), basename(uploadPath))
   formData.append('model', apiModel)
   formData.append('response_format', 'verbose_json')
   formData.append('timestamp_granularities[]', 'segment')

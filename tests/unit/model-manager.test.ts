@@ -1,3 +1,5 @@
+// @vitest-environment node
+// 主进程模块：在 node 环境测（undici 的 FormData/Blob/File 行为与 Electron 主进程一致）
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
@@ -95,6 +97,43 @@ describe('runCloudInference', () => {
     await runCloudInference(cloudConfig({ filePath }), onProgress)
 
     expect(onProgress.mock.calls.map(([p]) => p.percent)).toEqual([100])
+  })
+
+  it('uploads the original compressed file with its real filename', async () => {
+    fetchMock.mockResolvedValue(apiResponse())
+    const filePath = await makeAudioFile()
+    const originalPath = join(userDataDir, 'song.mp3')
+    await writeFile(originalPath, 'mp3-bytes')
+
+    await runCloudInference(cloudConfig({ filePath, originalPath }), vi.fn())
+
+    const file = (fetchMock.mock.calls[0][1].body as FormData).get('file') as File
+    expect(file.name).toBe('song.mp3')
+    expect(await file.text()).toBe('mp3-bytes')
+  })
+
+  it('falls back to the converted wav when the original is missing', async () => {
+    fetchMock.mockResolvedValue(apiResponse())
+    const filePath = await makeAudioFile()
+
+    await runCloudInference(
+      cloudConfig({ filePath, originalPath: join(userDataDir, 'gone.mp3') }),
+      vi.fn(),
+    )
+
+    const file = (fetchMock.mock.calls[0][1].body as FormData).get('file') as File
+    expect(await file.text()).toBe('fake-wav')
+  })
+
+  it('rejects uploads over 25MB with a clear error before calling the API', async () => {
+    const filePath = await makeAudioFile()
+    const originalPath = join(userDataDir, 'big.mp3')
+    await writeFile(originalPath, Buffer.alloc(25 * 1024 * 1024 + 1))
+
+    await expect(
+      runCloudInference(cloudConfig({ filePath, originalPath }), vi.fn()),
+    ).rejects.toThrow('25MB')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

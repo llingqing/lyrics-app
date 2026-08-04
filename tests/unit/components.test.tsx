@@ -58,6 +58,24 @@ describe('ConfigPanel', () => {
     )
   })
 
+  it('passes the original audio path through to the inference config', async () => {
+    const onStart = vi.fn()
+    render(
+      <ConfigPanel
+        audioInfo={{ ...audioInfo, originalPath: '/music/song.mp3' }}
+        onStart={onStart}
+        onBack={vi.fn()}
+      />
+    )
+    await waitFor(() => {
+      expect(screen.getByText('开始识别')).toBeDefined()
+    })
+    screen.getByText('开始识别').click()
+    expect(onStart).toHaveBeenCalledWith(
+      expect.objectContaining({ originalPath: '/music/song.mp3' })
+    )
+  })
+
   it('offers the large local models', async () => {
     await act(async () => {
       render(<ConfigPanel audioInfo={audioInfo} onStart={vi.fn()} onBack={vi.fn()} />)

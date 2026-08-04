@@ -31,6 +31,7 @@ export type LocalModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3-tu
 
 export interface InferenceConfig {
   filePath: string
+  originalPath?: string  // 用户打开的原始文件（云端上传用它，比预转 WAV 小）
   modelName: LocalModelName
   engine: 'local' | 'cloud'
   language: 'auto' | 'zh' | 'en' | 'ja' | 'ko'

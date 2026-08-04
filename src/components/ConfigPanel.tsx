@@ -48,6 +48,7 @@ export default function ConfigPanel({ audioInfo, onStart, onBack }: Props) {
     if (engine === 'cloud') saveCloudSettings(cloudSettings)
     onStart({
       filePath: audioInfo.filePath,
+      originalPath: audioInfo.originalPath,
       modelName,
       engine,
       language,
