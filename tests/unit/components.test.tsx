@@ -171,6 +171,34 @@ describe('ModelManager', () => {
     expect(screen.queryByText(/下载.*失败/)).toBeNull()
     expect(screen.getAllByText('下载').length).toBeGreaterThan(0)
   })
+
+  it('shows on-disk usage and deletes a model after two-step confirmation', async () => {
+    mockAPI.listModels.mockResolvedValue({
+      tiny: { downloaded: true, sizeBytes: 150 * 1024 * 1024 },
+      base: { downloaded: true, sizeBytes: 290 * 1024 * 1024 },
+      small: { downloaded: false, sizeBytes: 0 },
+      medium: { downloaded: false, sizeBytes: 0 },
+      'large-v3-turbo': { downloaded: false, sizeBytes: 0 },
+      'large-v3': { downloaded: false, sizeBytes: 0 },
+    })
+    mockAPI.deleteModel.mockResolvedValue(undefined)
+
+    render(<ModelManager />)
+    await screen.findAllByText('✓ 已下载')
+
+    expect(screen.getByText(/已占用 440(\.0)? MB/)).toBeInTheDocument()
+
+    // 两步确认：第一次点击不删
+    fireEvent.click(screen.getAllByLabelText('删除模型')[0])
+    expect(mockAPI.deleteModel).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('确认删除'))
+    expect(mockAPI.deleteModel).toHaveBeenCalledWith('tiny')
+
+    // 删除后卡片回到可下载状态
+    await waitFor(() => {
+      expect(screen.getAllByText('✓ 已下载')).toHaveLength(1)
+    })
+  })
 })
 
 // ─── AudioPlayer ───────────────────────────────────────────

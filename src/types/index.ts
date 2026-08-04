@@ -29,6 +29,11 @@ export interface TranscriptionResult {
 
 export type LocalModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3-turbo' | 'large-v3'
 
+export interface ModelStatus {
+  downloaded: boolean
+  sizeBytes: number   // 未下载为 0
+}
+
 export interface InferenceConfig {
   filePath: string
   originalPath?: string  // 用户打开的原始文件（云端上传用它，比预转 WAV 小）
@@ -73,9 +78,10 @@ export interface ElectronAPI {
   onInferenceProgress: (callback: (progress: InferenceProgress) => void) => () => void
   onInferenceResult: (callback: (result: TranscriptionResult) => void) => () => void
   onInferenceError: (callback: (error: { message: string; code: string }) => void) => () => void
-  listModels: () => Promise<Record<string, boolean>>
+  listModels: () => Promise<Record<string, ModelStatus>>
   downloadModel: (modelName: string) => Promise<string>
   cancelModelDownload: (modelName: string) => Promise<void>
+  deleteModel: (modelName: string) => Promise<void>
   onModelDownloadProgress: (callback: (p: { modelName: string; percent: number }) => void) => () => void
 }
 

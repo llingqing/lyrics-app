@@ -4,7 +4,7 @@ import { app } from 'electron'
 import { existsSync, mkdirSync, createWriteStream, readFileSync, renameSync, unlinkSync, statSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { tmpdir } from 'os'
-import { InferenceConfig, InferenceProgress, LyricSegment } from '../src/types'
+import { InferenceConfig, InferenceProgress, LyricSegment, ModelStatus } from '../src/types'
 import { errorMessage } from '../src/utils/error'
 
 // whisper.cpp 的 GGML 模型下载地址
@@ -134,6 +134,26 @@ function getModelsDir(): string {
 
 export function getModelPath(modelName: string): string {
   return join(getModelsDir(), `ggml-${modelName}.bin`)
+}
+
+export function deleteModel(modelName: string): void {
+  for (const path of [getModelPath(modelName), getModelPath(modelName) + '.download']) {
+    try {
+      if (existsSync(path)) unlinkSync(path)
+    } catch {
+      // 删除失败（如文件被占用）不致命，下次列表仍会如实显示
+    }
+  }
+}
+
+export function getModelsStatus(): Record<string, ModelStatus> {
+  const status: Record<string, ModelStatus> = {}
+  for (const name of Object.keys(MODEL_URLS)) {
+    const path = getModelPath(name)
+    const downloaded = existsSync(path)
+    status[name] = { downloaded, sizeBytes: downloaded ? statSync(path).size : 0 }
+  }
+  return status
 }
 
 const downloadAborts = new Map<string, AbortController>()

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
-import type { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
+import type { InferenceConfig, InferenceProgress, TranscriptionResult, ModelStatus } from '../src/types'
 
 // This script is sandboxed: it can only require 'electron' and a few node
 // builtins, never a relative module. Keep it free of local imports —
@@ -40,9 +40,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('inference:error', handler) }
   },
 
-  listModels: () => ipcRenderer.invoke('model:list') as Promise<Record<string, boolean>>,
+  listModels: () => ipcRenderer.invoke('model:list') as Promise<Record<string, ModelStatus>>,
   downloadModel: (modelName: string) => ipcRenderer.invoke('model:download', modelName) as Promise<string>,
   cancelModelDownload: (modelName: string) => ipcRenderer.invoke('model:download-cancel', modelName),
+  deleteModel: (modelName: string) => ipcRenderer.invoke('model:delete', modelName),
   onModelDownloadProgress: (callback: ModelDownloadCallback) => {
     const handler = (_event: IpcRendererEvent, p: { modelName: string; percent: number }) => callback(p)
     ipcRenderer.on('model:download-progress', handler)

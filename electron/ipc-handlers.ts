@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { loadAudioInfo, convertToWav } from './audio-manager'
-import { runLocalInference, runCloudInference, cancelInference, downloadModel, getModelPath, cancelDownload } from './model-manager'
+import { runLocalInference, runCloudInference, cancelInference, downloadModel, cancelDownload, deleteModel, getModelsStatus } from './model-manager'
 import { showExportDialog } from './export-manager'
 import { InferenceConfig, InferenceProgress, TranscriptionResult } from '../src/types'
 import { errorMessage } from '../src/utils/error'
@@ -11,7 +11,6 @@ import { trackTempFile, releaseTempFile } from './temp-files'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
-import { existsSync } from 'fs'
 import { app } from 'electron'
 
 const originalFileNames = new Map<string, string>()
@@ -142,14 +141,8 @@ export function registerHandlers(win: BrowserWindow): void {
   })
 
   // 模型管理
-  const MODEL_NAMES = ['tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3'] as const
-
   ipcMain.handle('model:list', async () => {
-    const result: Record<string, boolean> = {}
-    for (const name of MODEL_NAMES) {
-      result[name] = existsSync(getModelPath(name))
-    }
-    return result
+    return getModelsStatus()
   })
 
   ipcMain.handle('model:download', async (_event, modelName: string) => {
@@ -164,5 +157,10 @@ export function registerHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('model:download-cancel', async (_event, modelName: string) => {
     cancelDownload(modelName)
+  })
+
+  ipcMain.handle('model:delete', async (_event, modelName: string) => {
+    cancelDownload(modelName) // 兜底：正在下载时删除先停掉传输
+    deleteModel(modelName)
   })
 }

@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs, cancelDownload, getModelPath } from '../../electron/model-manager'
+import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs, cancelDownload, getModelPath, deleteModel, getModelsStatus } from '../../electron/model-manager'
 import { InferenceConfig } from '../../src/types'
 
 const fetchMock = vi.fn()
@@ -259,6 +259,36 @@ describe('buildWhisperArgs', () => {
     expect(args).not.toContain('-osrt')
     expect(args).toContain('/models/ggml-base.bin')
     expect(args).toContain('/tmp/a.wav')
+  })
+})
+
+describe('deleteModel', () => {
+  it('removes the model file and any partial download', async () => {
+    await writeFile(getModelPath('tiny'), 'model')
+    await writeFile(getModelPath('tiny') + '.download', 'partial')
+
+    deleteModel('tiny')
+
+    expect(existsSync(getModelPath('tiny'))).toBe(false)
+    expect(existsSync(getModelPath('tiny') + '.download')).toBe(false)
+  })
+
+  it('is a no-op when nothing was downloaded', () => {
+    expect(() => deleteModel('tiny')).not.toThrow()
+  })
+})
+
+describe('getModelsStatus', () => {
+  it('reports downloaded state and on-disk size for every known model', async () => {
+    await writeFile(getModelPath('base'), '12345')
+
+    const status = getModelsStatus()
+
+    expect(status.base).toEqual({ downloaded: true, sizeBytes: 5 })
+    expect(status.tiny).toEqual({ downloaded: false, sizeBytes: 0 })
+    expect(Object.keys(status)).toEqual([
+      'tiny', 'base', 'small', 'medium', 'large-v3-turbo', 'large-v3',
+    ])
   })
 })
 
