@@ -45,6 +45,23 @@ interface WhisperApiResponse {
   segments?: WhisperApiSegment[]
 }
 
+// whisper.cpp -ojf（full JSON）输出结构，只声明用到的字段
+interface WhisperJsonToken {
+  text: string
+  p?: number
+}
+
+interface WhisperJsonSegment {
+  offsets?: { from: number; to: number } // 毫秒
+  text?: string
+  tokens?: WhisperJsonToken[]
+}
+
+interface WhisperJsonOutput {
+  result?: { language?: string }
+  transcription?: WhisperJsonSegment[]
+}
+
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   isRetryable: (error: unknown) => boolean,
@@ -149,6 +166,22 @@ export function cancelInference(): void {
   }
 }
 
+export function buildWhisperArgs(
+  config: InferenceConfig,
+  modelPath: string,
+  outputPath: string,
+): string[] {
+  return [
+    '-m', modelPath,
+    '-f', config.filePath,  // 已在 ipc-handlers 中预转为 16kHz mono wav
+    '-ojf',  // full JSON：含真实检测语言与 token 概率（置信度来源）
+    '-of', outputPath,
+    '-l', config.language === 'auto' ? 'auto' : config.language,
+    '--print-progress',
+    '-ng',  // disable GPU — pre-built binary may lack CUDA backend
+  ]
+}
+
 export async function runLocalInference(
   config: InferenceConfig,
   onProgress: (p: InferenceProgress) => void,
@@ -162,7 +195,7 @@ export async function runLocalInference(
 
   const modelPath = await ensureModel(config.modelName)
   const outputPath = join(tmpdir(), `lyrics-${randomUUID()}`)
-  const srtPath = `${outputPath}.srt`
+  const jsonPath = `${outputPath}.json`
 
   // 检查 whisper 二进制是否存在
   const whisperBinary = process.platform === 'win32' ? 'whisper.exe' : 'whisper'
@@ -172,15 +205,7 @@ export async function runLocalInference(
     throw new Error(`whisper 程序未找到: ${whisperPath}。请将 whisper 可执行文件放到 resources/ 目录。`)
   }
 
-  const args = [
-    '-m', modelPath,
-    '-f', config.filePath,  // 已在 ipc-handlers 中预转为 16kHz mono wav
-    '-osrt',
-    '-of', outputPath,
-    '-l', config.language === 'auto' ? 'auto' : config.language,
-    '--print-progress',
-    '-ng',  // disable GPU — pre-built binary may lack CUDA backend
-  ]
+  const args = buildWhisperArgs(config, modelPath, outputPath)
 
   async function spawnInference(): Promise<{ segments: LyricSegment[]; language: string }> {
     return new Promise((resolve, reject) => {
@@ -208,34 +233,34 @@ export async function runLocalInference(
       currentProcess.on('close', (code) => {
         currentProcess = null
         if (cancelled) {
-          cleanup(srtPath)
+          cleanup(jsonPath)
           return reject(new Error('推理已被取消'))
         }
         if (code !== 0) {
           const errorMsg = extractError(stderr)
-          cleanup(srtPath)
+          cleanup(jsonPath)
           return reject(new Error(errorMsg))
         }
 
-        if (!existsSync(srtPath)) {
-          cleanup(srtPath)
+        if (!existsSync(jsonPath)) {
+          cleanup(jsonPath)
           return reject(new Error('推理完成但未生成输出'))
         }
 
         try {
-          const srtContent = readFileSync(srtPath, 'utf-8')
-          const { segments, language } = parseSrt(srtContent, config)
-          cleanup(srtPath)
+          const jsonContent = readFileSync(jsonPath, 'utf-8')
+          const { segments, language } = parseWhisperJson(jsonContent, config)
+          cleanup(jsonPath)
           resolve({ segments, language })
         } catch (e) {
-          cleanup(srtPath)
+          cleanup(jsonPath)
           reject(e)
         }
       })
 
       currentProcess.on('error', (err) => {
         currentProcess = null
-        cleanup(srtPath)
+        cleanup(jsonPath)
         reject(new Error(`whisper.cpp 进程启动失败: ${err.message}。请确认已下载 whisper 可执行文件到 resources/ 目录。`))
       })
     })
@@ -249,9 +274,9 @@ export async function runLocalInference(
   return retryWithBackoff(spawnInference, isRetryableLocal, { maxRetries: 2, baseDelayMs: 1000 })
 }
 
-function cleanup(srtPath?: string) {
-  if (srtPath) {
-    try { unlinkSync(srtPath) } catch { /* already cleaned up */ }
+function cleanup(outputFile?: string) {
+  if (outputFile) {
+    try { unlinkSync(outputFile) } catch { /* already cleaned up */ }
   }
 }
 
@@ -335,38 +360,36 @@ export async function runCloudInference(
   return retryWithBackoff(callApi, isRetryableCloud, { maxRetries: 2, baseDelayMs: 1500 })
 }
 
-function parseSrt(srt: string, config: InferenceConfig): { segments: LyricSegment[]; language: string } {
+// whisper.cpp full JSON 里的特殊标记 token（[_BEG_]、[_TT_150] 等），不计入置信度
+const SPECIAL_TOKEN = /^\[_.*\]$/
+
+export function parseWhisperJson(
+  json: string,
+  config: InferenceConfig,
+): { segments: LyricSegment[]; language: string } {
+  const data = JSON.parse(json) as WhisperJsonOutput
   const segments: LyricSegment[] = []
-  const blocks = srt.trim().split(/\n\n+/)
 
-  for (const block of blocks) {
-    const lines = block.split('\n')
-    if (lines.length < 2) continue
-
-    const timeMatch = lines[1]?.match(/([\d:,.]+)\s*-->\s*([\d:,.]+)/)
-    if (!timeMatch) continue
-
-    const start = parseSrtTime(timeMatch[1])
-    const end = parseSrtTime(timeMatch[2])
-    const text = lines.slice(2).join(' ').trim()
+  for (const seg of data.transcription || []) {
+    const text = seg.text?.trim() || ''
     if (!text) continue
+
+    const tokens = (seg.tokens || []).filter(
+      t => typeof t.p === 'number' && !SPECIAL_TOKEN.test(t.text.trim()),
+    )
+    const confidence = tokens.length > 0
+      ? tokens.reduce((sum, t) => sum + (t.p as number), 0) / tokens.length
+      : 0.85
 
     segments.push({
       id: `seg-${segments.length}`,
-      start,
-      end,
+      start: (seg.offsets?.from ?? 0) / 1000,
+      end: (seg.offsets?.to ?? 0) / 1000,
       text,
-      confidence: 0.85,
+      confidence,
       edited: false,
     })
   }
 
-  return { segments, language: config.language === 'auto' ? 'zh' : config.language }
-}
-
-function parseSrtTime(timeStr: string): number {
-  // format: "00:01:23,456" or "00:01:23.456"
-  const match = timeStr.match(/(\d+):(\d+):(\d+)[,.](\d+)/)
-  if (!match) return 0
-  return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseInt(match[3]) + parseInt(match[4]) / 1000
+  return { segments, language: data.result?.language || config.language }
 }

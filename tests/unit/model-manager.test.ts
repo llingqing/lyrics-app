@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { runCloudInference, downloadModel, cancelInference } from '../../electron/model-manager'
+import { runCloudInference, downloadModel, cancelInference, parseWhisperJson, buildWhisperArgs } from '../../electron/model-manager'
 import { InferenceConfig } from '../../src/types'
 
 const fetchMock = vi.fn()
@@ -120,6 +120,81 @@ describe('cancelInference (cloud)', () => {
 
     await expect(promise).rejects.toThrow('取消')
     expect(fetchMock).toHaveBeenCalledOnce()
+  })
+})
+
+describe('parseWhisperJson', () => {
+  function localConfig(overrides: Partial<InferenceConfig> = {}): InferenceConfig {
+    return {
+      filePath: '/tmp/a.wav',
+      modelName: 'base',
+      engine: 'local',
+      language: 'auto',
+      ...overrides,
+    }
+  }
+
+  it('returns the detected language and token-probability confidence', () => {
+    const json = JSON.stringify({
+      result: { language: 'en' },
+      transcription: [
+        {
+          offsets: { from: 1000, to: 3500 },
+          text: ' Hello world',
+          tokens: [
+            { text: '[_BEG_]', p: 0.99 }, // special token, excluded from confidence
+            { text: ' Hello', p: 0.9 },
+            { text: ' world', p: 0.6 },
+          ],
+        },
+      ],
+    })
+
+    const { segments, language } = parseWhisperJson(json, localConfig())
+
+    expect(language).toBe('en')
+    expect(segments).toHaveLength(1)
+    expect(segments[0]).toMatchObject({ start: 1, end: 3.5, text: 'Hello world' })
+    expect(segments[0].confidence).toBeCloseTo(0.75)
+  })
+
+  it('skips blank segments and falls back to default confidence without tokens', () => {
+    const json = JSON.stringify({
+      result: { language: 'zh' },
+      transcription: [
+        { offsets: { from: 0, to: 2000 }, text: ' 你好' },
+        { offsets: { from: 2000, to: 4000 }, text: '   ' },
+      ],
+    })
+
+    const { segments } = parseWhisperJson(json, localConfig())
+
+    expect(segments).toHaveLength(1)
+    expect(segments[0].confidence).toBeCloseTo(0.85)
+  })
+
+  it('falls back to the configured language when detection is missing', () => {
+    const json = JSON.stringify({
+      transcription: [{ offsets: { from: 0, to: 1000 }, text: ' hi' }],
+    })
+
+    expect(parseWhisperJson(json, localConfig({ language: 'ja' })).language).toBe('ja')
+    expect(parseWhisperJson(json, localConfig({ language: 'auto' })).language).toBe('auto')
+  })
+})
+
+describe('buildWhisperArgs', () => {
+  it('requests full JSON output so language and token probabilities are real', () => {
+    const args = buildWhisperArgs(
+      { filePath: '/tmp/a.wav', modelName: 'base', engine: 'local', language: 'auto' },
+      '/models/ggml-base.bin',
+      '/tmp/out',
+    )
+
+    expect(args).toContain('-ojf')
+    expect(args).not.toContain('-osrt')
+    expect(args).toContain('/models/ggml-base.bin')
+    expect(args).toContain('/tmp/a.wav')
   })
 })
 
